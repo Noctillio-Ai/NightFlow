@@ -26,6 +26,7 @@ import {
   platform,
 } from "../state/dashboard.js";
 import { currentProject } from "../state/projects.js";
+import { navigate } from "../state/router.js";
 import { startTraining, trainingActive } from "../state/training.js";
 import { projectRuns } from "../state/experiments.js";
 import { addToQueue, projectQueue, removeFromQueue, queueLength } from "../state/queue.js";
@@ -471,7 +472,7 @@ function ProgressCircle({ percentage }) {
   const dashOffset = circumference - (percentage / 100) * circumference;
 
   return (
-    <div class="progress-circle-container">
+    <div class="progress-circle-container" role="progressbar" aria-label="Project sync progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percentage)}>
       <svg
         width="80"
         height="80"
@@ -537,17 +538,13 @@ function SyncScreen() {
           Scan the project directory for MLflow runs, parse metrics and
           checkpoints, and import them into the local database.
         </p>
-        <button
-          class="dashboard-sync-btn"
-          onClick={syncDashboard}
-          disabled={syncing || showingCompletion}
-        >
-          {syncing || showingCompletion ? (
-            <ProgressCircle percentage={progress} />
-          ) : (
-            "Sync"
-          )}
-        </button>
+        {syncing || showingCompletion ? (
+          <ProgressCircle percentage={progress} />
+        ) : (
+          <button class="dashboard-sync-btn" onClick={syncDashboard}>
+            Sync
+          </button>
+        )}
         {(syncing || showingCompletion) && (
           <div class="sync-progress-section">
             <div class="sync-progress-bar-track">
@@ -780,7 +777,8 @@ function StartTrainingButton() {
           <line x1="24" y1="38" x2="40" y2="38" stroke="var(--btn-bg)" stroke-width="1" opacity="0.25" />
         </svg>
       </div>
-      <div class="start-training-label">Launch Experiment</div>
+      <div class="start-training-label">Launch your next experiment</div>
+      <p class="start-training-description">{datasetInvalid ? "Resolve the dataset errors below before starting a run." : "Start training with your project configuration and follow the results here."}</p>
       {project.powerUserMode && (
         <div class="start-training-cmd-preview">
           <svg
@@ -908,8 +906,42 @@ export function DashboardView() {
 
   return (
     <div class="dashboard-view">
+      <div class="dashboard-heading">
+        <div>
+          <span class="page-eyebrow">PROJECT OVERVIEW</span>
+          <h2>{currentProject.value?.name || "Your workspace"}</h2>
+          <p>Train, monitor, and explore your computer vision experiments.</p>
+        </div>
+        <button class="dashboard-settings-btn" onClick={() => navigate("settings")}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="3" fill="var(--bg-primary)" /><circle cx="15" cy="17" r="3" fill="var(--bg-primary)" />
+          </svg>
+          Project settings
+        </button>
+      </div>
+      <div class="dashboard-context" aria-label="Project configuration">
+        <span>{currentProject.value?.taskType || "Classification"}</span>
+        {currentProject.value?.datasetFormat && <span>{currentProject.value.datasetFormat} dataset</span>}
+        <span>{currentProject.value?.connectionType === "remote" ? "Remote compute" : "Local compute"}</span>
+      </div>
       <SshStatusBanner />
-      {!connected ? null : syncing || showingCompletion || !synced ? (
+      {!connected ? (
+        <div class="dashboard-connect-card">
+          <div class="dashboard-connect-symbol" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="12" rx="2" /><path d="M8 21h8M12 15v6M7 7l3 2-3 2M13 11h4" />
+            </svg>
+          </div>
+          <span class="page-eyebrow">LET’S GET STARTED</span>
+          <h3>Connect your workspace</h3>
+          <p>Connect to your compute environment to sync your dataset, check system resources, and launch a training run.</p>
+          <button class="dashboard-connect-btn" onClick={toggleSshConnection} disabled={sshConnecting.value}>
+            {sshConnecting.value ? "Connecting…" : "Connect workspace"}
+            <span aria-hidden="true">→</span>
+          </button>
+          <span class="dashboard-connect-hint">You can update your connection in project settings.</span>
+        </div>
+      ) : syncing || showingCompletion || !synced ? (
         <SyncScreen />
       ) : (
         <>
@@ -926,14 +958,14 @@ export function DashboardView() {
               title={s.activeRunName ? `Active: ${s.activeRunName}` : undefined}
             />
             <SummaryCard
-              label="Best Val Acc"
+              label="Best validation accuracy"
               value={
                 s.bestAcc != null ? (s.bestAcc * 100).toFixed(1) + "%" : "—"
               }
               icon={icons.accuracy}
             />
             <SummaryCard
-              label="Best Test Acc"
+              label="Best test accuracy"
               value={
                 s.bestTestAcc != null ? (s.bestTestAcc * 100).toFixed(1) + "%" : "—"
               }
