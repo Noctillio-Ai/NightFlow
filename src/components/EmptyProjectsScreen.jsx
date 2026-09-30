@@ -40,10 +40,11 @@ export function EmptyProjectsScreen() {
         <div class="empty-projects-logo">
           <img src="/assets/image.png" alt="NightFlow" width="140" />
         </div>
-        <h1 class="empty-projects-title">Welcome to NightFlow</h1>
+        <span class="page-eyebrow">YOUR COMPUTER VISION WORKSPACE</span>
+        <h1 class="empty-projects-title">From first dataset.<br />To your best model.</h1>
         <p class="empty-projects-desc">
-          Your unified platform for computer vision model training. Create your
-          first project to get started.
+          Bring your datasets, training runs, and model insights together.
+          Build your next computer vision experiment with NightFlow.
         </p>
         <button class="empty-projects-btn" onClick={openWizard}>
           <svg
@@ -59,8 +60,9 @@ export function EmptyProjectsScreen() {
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          Create Your First Project
+          Create your first project
         </button>
+        <p class="empty-projects-note">Local or remote compute. One focused workspace.</p>
         <div class="empty-projects-features">
           <div class="empty-projects-feature">
             <svg
