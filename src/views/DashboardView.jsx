@@ -26,6 +26,7 @@ import {
   platform,
 } from "../state/dashboard.js";
 import { currentProject } from "../state/projects.js";
+import { getTrainingReadiness } from "../utils/trainingReadiness.js";
 import { navigate } from "../state/router.js";
 import { startTraining, trainingActive } from "../state/training.js";
 import { projectRuns } from "../state/experiments.js";
@@ -664,6 +665,7 @@ function StartTrainingButton() {
   const testCommandDisplay = buildCommandDisplay(project, "test");
   const validation = datasetValidation.value;
   const datasetInvalid = validation && !validation.valid;
+  const readiness = getTrainingReadiness({ project, validation, pathStatus: datasetPathStatus.value, environment: envInfo.value, active });
 
   const handleTrainClick = async () => {
     const runId = crypto.randomUUID();
@@ -677,7 +679,7 @@ function StartTrainingButton() {
   // lives here so it inherits the button's own guards rather than duplicating
   // them: this only mounts on a synced dashboard with a project selected.
   useEffect(() => {
-    if (active || datasetInvalid) return;
+    if (readiness.blocked) return;
     function onKey(e) {
       if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
       e.preventDefault();
@@ -685,7 +687,7 @@ function StartTrainingButton() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, datasetInvalid, project?.id, command]);
+  }, [readiness.blocked, project?.id, command]);
 
   const handleTestClick = async () => {
     // Find the latest completed run to use its checkpoint
@@ -705,80 +707,11 @@ function StartTrainingButton() {
 
   return (
     <div class="start-training-section">
-      <div class="start-training-illustration">
-        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-          {/* Exhaust glow */}
-          <ellipse cx="32" cy="56" rx="8" ry="4" fill="var(--btn-bg)" opacity="0.08" />
-          {/* Exhaust flames */}
-          <path
-            d="M29 46c-1 4-3 8-4 10"
-            stroke="var(--text-muted)"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            opacity="0.5"
-          />
-          <path
-            d="M32 46c0 4 0 9 0 12"
-            stroke="var(--text-muted)"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            opacity="0.6"
-          />
-          <path
-            d="M35 46c1 4 3 8 4 10"
-            stroke="var(--text-muted)"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            opacity="0.5"
-          />
-          {/* Fins */}
-          <path
-            d="M24 40l-6 6h6z"
-            fill="var(--btn-bg)"
-            opacity="0.2"
-            stroke="var(--btn-bg)"
-            stroke-width="1"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M40 40l6 6h-6z"
-            fill="var(--btn-bg)"
-            opacity="0.2"
-            stroke="var(--btn-bg)"
-            stroke-width="1"
-            stroke-linejoin="round"
-          />
-          {/* Rocket body */}
-          <path
-            d="M32 6c-4 6-8 16-8 28v8h16v-8c0-12-4-22-8-28z"
-            fill="var(--btn-bg)"
-            opacity="0.1"
-          />
-          <path
-            d="M32 6c-4 6-8 16-8 28v8h16v-8c0-12-4-22-8-28z"
-            stroke="var(--btn-bg)"
-            stroke-width="1.5"
-            stroke-linejoin="round"
-            fill="none"
-          />
-          {/* Nose highlight */}
-          <path
-            d="M32 10c-2 4-4.5 10-5.5 18"
-            stroke="var(--btn-bg)"
-            stroke-width="0.75"
-            stroke-linecap="round"
-            opacity="0.3"
-          />
-          {/* Window */}
-          <circle cx="32" cy="26" r="4" stroke="var(--btn-bg)" stroke-width="1.5" fill="none" />
-          <circle cx="32" cy="26" r="2.5" fill="var(--btn-bg)" opacity="0.15" />
-          {/* Body stripe */}
-          <line x1="24.5" y1="36" x2="39.5" y2="36" stroke="var(--btn-bg)" stroke-width="1" opacity="0.25" />
-          <line x1="24" y1="38" x2="40" y2="38" stroke="var(--btn-bg)" stroke-width="1" opacity="0.25" />
-        </svg>
+      <div class="start-training-heading">
+        <div class="start-training-label">Launch your next experiment</div>
+        <span class="training-readiness" role="status">{readiness.label}</span>
       </div>
-      <div class="start-training-label">Launch your next experiment</div>
-      <p class="start-training-description">{datasetInvalid ? "Resolve the dataset errors below before starting a run." : "Start training with your project configuration and follow the results here."}</p>
+      <p class="start-training-description" id="training-readiness-detail">{readiness.detail}</p>
       {project.powerUserMode && (
         <div class="start-training-cmd-preview">
           <svg
@@ -802,8 +735,9 @@ function StartTrainingButton() {
         <button
           class="start-training-btn"
           onClick={handleTrainClick}
-          disabled={active || datasetInvalid}
-          title={datasetInvalid ? "Fix dataset errors before training" : active ? "A training run is already active" : undefined}
+          disabled={readiness.blocked}
+          title={readiness.blocked ? readiness.detail : undefined}
+          aria-describedby="training-readiness-detail"
         >
           <svg
             width="16"
