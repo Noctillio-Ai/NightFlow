@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://theja-vanka.github.io/NightFlow/sitemap.xml
+Sitemap: https://noctillio-ai.github.io/NightFlow/sitemap.xml

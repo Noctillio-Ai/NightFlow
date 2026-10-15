@@ -22,7 +22,7 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Download release DMGs and compute SHA256
+      - name: Download release DMG and compute SHA256
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         id: sha
@@ -33,49 +33,35 @@ jobs:
             --pattern "*aarch64*.dmg" \
             --dir /tmp/dmgs
 
-          gh release download "v${VERSION}" \
-            --pattern "*x64*.dmg" \
-            --dir /tmp/dmgs
-
           ls -lh /tmp/dmgs/
 
           ARM64_SHA=$(shasum -a 256 /tmp/dmgs/*aarch64*.dmg | awk '{print $1}')
-          X64_SHA=$(shasum -a 256 /tmp/dmgs/*x64*.dmg | awk '{print $1}')
 
           echo "arm64_sha=${ARM64_SHA}" >> "$GITHUB_OUTPUT"
-          echo "x64_sha=${X64_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Update cask formula
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ARM64_SHA="${{ steps.sha.outputs.arm64_sha }}"
-          X64_SHA="${{ steps.sha.outputs.x64_sha }}"
 
           cat > Casks/nightflow.rb << EOF
           cask "nightflow" do
             version "${VERSION}"
 
-            on_arm do
-              url "https://github.com/theja-vanka/NightFlow/releases/download/v#{version}/NightFlow_#{version}_aarch64.dmg",
-                  verified: "github.com/theja-vanka/NightFlow/"
-              sha256 "${ARM64_SHA}"
-            end
-
-            on_intel do
-              url "https://github.com/theja-vanka/NightFlow/releases/download/v#{version}/NightFlow_#{version}_x64.dmg",
-                  verified: "github.com/theja-vanka/NightFlow/"
-              sha256 "${X64_SHA}"
-            end
+            url "https://github.com/Noctillio-Ai/NightFlow/releases/download/v#{version}/NightFlow_#{version}_aarch64.dmg",
+                verified: "github.com/Noctillio-Ai/NightFlow/"
+            sha256 "${ARM64_SHA}"
 
             name "NightFlow"
             desc "Desktop app for managing and analyzing deep learning experiments"
-            homepage "https://github.com/theja-vanka/NightFlow"
+            homepage "https://github.com/Noctillio-Ai/NightFlow"
 
             livecheck do
               url :url
               strategy :github_latest
             end
 
+            depends_on arch: :arm64
             depends_on macos: ">= :ventura"
 
             app "NightFlow.app"
