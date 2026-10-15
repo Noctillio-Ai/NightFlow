@@ -8,6 +8,7 @@ mod runs;
 mod ssh;
 mod system;
 mod training;
+mod updater;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -257,6 +258,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             close_splash,
             get_platform,
+            updater::check_for_update,
+            updater::install_update,
             window_minimize,
             window_maximize,
             window_close,

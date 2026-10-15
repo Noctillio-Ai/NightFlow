@@ -1,27 +1,20 @@
 cask "nightflow" do
   version "0.2.1"
 
-  on_arm do
-    url "https://github.com/theja-vanka/NightFlow/releases/download/v#{version}/NightFlow_#{version}_aarch64.dmg",
-        verified: "github.com/theja-vanka/NightFlow/"
-    sha256 "31b40627737c432505794940929feec8148394cb8a34785667e625f2885d610e"
-  end
-
-  on_intel do
-    url "https://github.com/theja-vanka/NightFlow/releases/download/v#{version}/NightFlow_#{version}_x64.dmg",
-        verified: "github.com/theja-vanka/NightFlow/"
-    sha256 "d546cd72a6abaee6a7cb2608f911b62d9459f9de636f7ae3297242b0701dba7d"
-  end
+  url "https://github.com/Noctillio-Ai/NightFlow/releases/download/v#{version}/NightFlow_#{version}_aarch64.dmg",
+      verified: "github.com/Noctillio-Ai/NightFlow/"
+  sha256 "31b40627737c432505794940929feec8148394cb8a34785667e625f2885d610e"
 
   name "NightFlow"
   desc "Desktop app for managing and analyzing deep learning experiments"
-  homepage "https://github.com/theja-vanka/NightFlow"
+  homepage "https://github.com/Noctillio-Ai/NightFlow"
 
   livecheck do
     url :url
     strategy :github_latest
   end
 
+  depends_on arch: :arm64
   depends_on macos: ">= :ventura"
 
   app "NightFlow.app"

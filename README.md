@@ -13,11 +13,11 @@
 <br>
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/github/v/release/theja-vanka/NightFlow?style=flat-square&label=Version&color=brightgreen)](../../releases/latest)
-[![GitHub Stars](https://img.shields.io/github/stars/theja-vanka/NightFlow?style=flat-square&color=gold)](../../stargazers)
-[![GitHub Issues](https://img.shields.io/github/issues/theja-vanka/NightFlow?style=flat-square)](../../issues)
-[![GitHub PRs](https://img.shields.io/github/issues-pr/theja-vanka/NightFlow?style=flat-square)](../../pulls)
-[![Last Commit](https://img.shields.io/github/last-commit/theja-vanka/NightFlow?style=flat-square)](../../commits)
+[![Version](https://img.shields.io/github/v/release/Noctillio-Ai/NightFlow?style=flat-square&label=Version&color=brightgreen)](../../releases/latest)
+[![GitHub Stars](https://img.shields.io/github/stars/Noctillio-Ai/NightFlow?style=flat-square&color=gold)](../../stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/Noctillio-Ai/NightFlow?style=flat-square)](../../issues)
+[![GitHub PRs](https://img.shields.io/github/issues-pr/Noctillio-Ai/NightFlow?style=flat-square)](../../pulls)
+[![Last Commit](https://img.shields.io/github/last-commit/Noctillio-Ai/NightFlow?style=flat-square)](../../commits)
 
 <br>
 
@@ -109,29 +109,33 @@ augmentation policy, accelerator, device IDs — and the YAML it emits is a plai
 <tr>
 <td width="50%" valign="top">
 
-**Download a build**
+**Quick install — macOS & Linux**
 
-| Platform | Arch | Formats |
-| :--- | :--- | :--- |
-| **macOS** | ARM64 / x64 | `.dmg` |
-| **Linux** | x64 | `.deb` · `.AppImage` |
+```bash
+curl -fsSL https://raw.githubusercontent.com/Noctillio-Ai/NightFlow/main/install.sh | bash
+```
 
-From the **[Releases](../../releases/latest)** page.
+Fetches the right build for your OS and architecture, verifies it, and installs it. On Linux, append `-s -- --deb` for the Debian package instead of the AppImage. macOS requires **Apple silicon**.
 
 </td>
 <td width="50%" valign="top">
 
-**Or use Homebrew**
+**Or use Homebrew — macOS**
 
 ```bash
-brew tap theja-vanka/nightflow \
-  https://github.com/theja-vanka/NightFlow
+brew tap noctillio-ai/nightflow \
+  https://github.com/Noctillio-Ai/NightFlow
 brew install --cask nightflow
 ```
 
 </td>
 </tr>
 </table>
+
+> [!NOTE]
+> NightFlow keeps itself current. When a new release is available, click **Update** in
+> the app — it downloads the update, closes, installs, and relaunches. You can also
+> re-run the install command above at any time.
 
 > [!IMPORTANT]
 > You need **Python 3.12** on the machine that trains. That's all — NightFlow builds its
@@ -538,7 +542,7 @@ src-tauri/src/
 ## Build from source
 
 ```bash
-git clone https://github.com/theja-vanka/NightFlow.git
+git clone https://github.com/Noctillio-Ai/NightFlow.git
 cd NightFlow
 npm install --legacy-peer-deps   # or: bun install
 npx tauri dev                    # or: bunx tauri dev
@@ -615,7 +619,7 @@ Issues and pull requests are welcome.
 3. Keep `npm run lint`, `npm test` and `cargo clippy` clean
 4. Open a pull request
 
-Full docs: **[theja-vanka.github.io/NightFlow](https://theja-vanka.github.io/NightFlow/)**
+Full docs: **[noctillio-ai.github.io/NightFlow](https://noctillio-ai.github.io/NightFlow/)**
 
 ---
 
