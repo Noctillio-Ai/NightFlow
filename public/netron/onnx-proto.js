@@ -15,7 +15,8 @@ onnx.Version = {
     "IR_VERSION_2024_3_25": 10,
     "IR_VERSION_2025_05_12": 11,
     "IR_VERSION_2025_08_26": 12,
-    "IR_VERSION": 13
+    "IR_VERSION_2025_11_06": 13,
+    "IR_VERSION": 14
 };
 
 onnx.AttributeProto = class AttributeProto {
@@ -1600,7 +1601,9 @@ onnx.TensorProto.DataType = {
     "FLOAT4E2M1": 23,
     "FLOAT8E8M0": 24,
     "UINT2": 25,
-    "INT2": 26
+    "INT2": 26,
+    "FLOAT6E2M3": 27,
+    "FLOAT6E3M2": 28
 };
 
 onnx.TensorProto.Segment = class Segment {

@@ -22,7 +22,9 @@ tflite.TensorType = {
     INT4: 17, '17': 'INT4',
     BFLOAT16: 18, '18': 'BFLOAT16',
     INT2: 19, '19': 'INT2',
-    UINT4: 20, '20': 'UINT4'
+    UINT4: 20, '20': 'UINT4',
+    FLOAT8_E4M3FN: 21, '21': 'FLOAT8_E4M3FN',
+    FLOAT8_E5M2: 22, '22': 'FLOAT8_E5M2'
 };
 
 tflite.CustomQuantization = class CustomQuantization {
@@ -46,6 +48,7 @@ tflite.QuantizationDetails = class {
         switch (type) {
             case 1: return tflite.CustomQuantization.decode(reader, position);
             case 2: return tflite.BlockwiseQuantization.decode(reader, position);
+            case 3: return tflite.MultiAxisQuantization.decode(reader, position);
             default: return undefined;
         }
     }
@@ -54,6 +57,7 @@ tflite.QuantizationDetails = class {
         switch (type) {
             case 'CustomQuantization': return tflite.CustomQuantization.decodeText(reader, json);
             case 'BlockwiseQuantization': return tflite.BlockwiseQuantization.decodeText(reader, json);
+            case 'MultiAxisQuantization': return tflite.MultiAxisQuantization.decodeText(reader, json);
             default: return undefined;
         }
     }
@@ -66,6 +70,7 @@ tflite.BlockwiseQuantization = class BlockwiseQuantization {
         $.scales = reader.int32_(position, 4, 0);
         $.zero_points = reader.int32_(position, 6, 0);
         $.block_size = reader.int32_(position, 8, 0);
+        $.block_shape = reader.array(position, 10, Int32Array);
         return $;
     }
 
@@ -74,6 +79,28 @@ tflite.BlockwiseQuantization = class BlockwiseQuantization {
         $.scales = reader.value(json.scales, 0);
         $.zero_points = reader.value(json.zero_points, 0);
         $.block_size = reader.value(json.block_size, 0);
+        $.block_shape = reader.array(json.block_shape, Int32Array);
+        return $;
+    }
+};
+
+tflite.MultiAxisQuantization = class MultiAxisQuantization {
+
+    static decode(reader, position) {
+        const $ = new tflite.MultiAxisQuantization();
+        $.scales = reader.int32_(position, 4, 0);
+        $.zero_points = reader.int32_(position, 6, 0);
+        $.block_size = reader.int32_(position, 8, 0);
+        $.quantized_dimensions = reader.array(position, 10, Int32Array);
+        return $;
+    }
+
+    static decodeText(reader, json) {
+        const $ = new tflite.MultiAxisQuantization();
+        $.scales = reader.value(json.scales, 0);
+        $.zero_points = reader.value(json.zero_points, 0);
+        $.block_size = reader.value(json.block_size, 0);
+        $.quantized_dimensions = reader.array(json.quantized_dimensions, Int32Array);
         return $;
     }
 };
@@ -1475,6 +1502,7 @@ tflite.FullyConnectedOptions = class FullyConnectedOptions {
         $.keep_num_dims = reader.bool_(position, 8, false);
         $.asymmetric_quantize_inputs = reader.bool_(position, 10, false);
         $.quantized_bias_type = reader.int8_(position, 12, 0);
+        $.quant_spec = reader.array(position, 14, Uint8Array);
         return $;
     }
 
@@ -1485,6 +1513,7 @@ tflite.FullyConnectedOptions = class FullyConnectedOptions {
         $.keep_num_dims = reader.value(json.keep_num_dims, false);
         $.asymmetric_quantize_inputs = reader.value(json.asymmetric_quantize_inputs, false);
         $.quantized_bias_type = tflite.TensorType[json.quantized_bias_type];
+        $.quant_spec = reader.array(json.quant_spec, Uint8Array);
         return $;
     }
 };

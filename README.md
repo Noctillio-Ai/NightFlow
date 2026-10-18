@@ -606,6 +606,46 @@ same configs against a real AutoTimm install.
 
 </details>
 
+<details>
+<summary><b>Updating the bundled Netron viewer</b></summary>
+
+<br>
+
+The Model Viewer runs a copy of [Netron](https://github.com/lutzroeder/netron) shipped
+inside the app at `public/netron/`. It is never fetched at runtime, so it only changes
+when you update it. The installed version is in `public/netron/VERSION`.
+
+1. **Check for a newer release** (changes nothing):
+
+   ```bash
+   scripts/update-netron.sh --check
+   ```
+
+2. **Update** to the latest release, or pass a version to pin one:
+
+   ```bash
+   scripts/update-netron.sh          # latest
+   scripts/update-netron.sh 9.3.2    # specific version
+   ```
+
+   The script downloads Netron's release from PyPI, verifies its SHA-256, and replaces
+   `public/netron/` with it, removing files the new release no longer ships.
+
+3. **Review the changes** with `git status --short public/netron`.
+
+4. **Test in the app**: run `npx tauri dev`, open **Model Viewer**, load a completed
+   run, and check that the graph renders, zooms, and opens a layer's properties.
+
+5. **Commit `public/netron/` on its own** (e.g. `chore: update Netron to 9.4.0`), so a
+   bad update can be reverted, or rolled back by re-running the script with the
+   previous version.
+
+Don't edit files inside `public/netron/`, since the next update replaces the whole folder.
+The script needs `curl`, `unzip` and `python3` (macOS or Linux; on Windows use WSL or Git
+Bash).
+
+</details>
+
 ---
 
 ## Troubleshooting

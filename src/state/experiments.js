@@ -295,8 +295,10 @@ export const filteredRuns = computed(() => {
   const field = sortField.value;
   const dir = sortDir.value === "asc" ? 1 : -1;
   result = [...result].sort((a, b) => {
-    const va = a[field] ?? "";
-    const vb = b[field] ?? "";
+    const va = sortValue(a, field);
+    const vb = sortValue(b, field);
+    // Runs without a value (not finished, never tested…) always go last.
+    if (va == null || vb == null) return va == null ? (vb == null ? 0 : 1) : -1;
     if (typeof va === "number" && typeof vb === "number")
       return (va - vb) * dir;
     return String(va).localeCompare(String(vb)) * dir;
@@ -304,6 +306,16 @@ export const filteredRuns = computed(() => {
 
   return result;
 });
+
+function sortValue(run, field) {
+  if (field === "_duration") {
+    if (!run.created || !run.finishedAt) return null;
+    const ms = new Date(run.finishedAt) - new Date(run.created);
+    return ms >= 0 ? ms : null;
+  }
+  const v = run[field];
+  return v === "" || v === undefined ? null : v;
+}
 
 export function toggleSort(field) {
   if (sortField.value === field) {

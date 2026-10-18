@@ -9,7 +9,7 @@ tosa.ModelFactory = class {
             return context.set('tosa.flatbuffers', reader);
         }
         const obj = await context.peek('json');
-        if (obj && obj.regions && obj.version) {
+        if (obj && obj.regions && obj.version && obj.version._major !== undefined) {
             return context.set('tosa.flatbuffers.json', obj);
         }
         return null;
@@ -101,7 +101,7 @@ tosa.ModelFactory = class {
             const message = error && error.message ? error.message : error.toString();
             throw new tosa.Error(`File format is not tosa.TosaGraph (${message.replace(/\.$/, '')}).`);
         }
-        const data = await context.request('tosa-metadata.json', 'utf-8', null);
+        const data = await context.asset('tosa-metadata.json');
         const metadata = new tosa.Metadata(data, schema_version);
         return new tosa.Model(new tosa.Context(schema, metadata), model, file_version);
     }
@@ -125,6 +125,7 @@ tosa.Graph = class {
     constructor(context, block, region) {
         this.name = region ? `${region}/${block.name}` : block.name || '';
         const tensors = new Map();
+        const shapes = new Map();
         for (const tensor of block.tensors) {
             const type = new tosa.TensorType(context, tensor.type, tensor.shape);
             const data = tensor.data && tensor.data.length > 0 ? tensor.data : null;
@@ -138,7 +139,17 @@ tosa.Graph = class {
             }
             tensors.set(tensor.name, value);
         }
-        const value = (name) => {
+        for (const shape of block.shapes || []) {
+            const type = new tosa.TensorType(context, context.schema.DType.SHAPE, [shape.rank]);
+            const data = shape.data && shape.data.length > 0 ? shape.data : null;
+            const initializer = data ? new tosa.Tensor(shape.name, type, data) : null;
+            const value = new tosa.Value(shape.name, type, initializer);
+            shapes.set(shape.name, value);
+        }
+        const value = (name, type) => {
+            if (shapes.has(name) && (type === 'shape' || !tensors.has(name))) {
+                return shapes.get(name);
+            }
             if (!tensors.has(name)) {
                 tensors.set(name, new tosa.Value(name, null, null));
             }
@@ -171,14 +182,18 @@ tosa.Node = class {
         this.attributes = [];
         const inputs = operator.inputs || [];
         for (let i = 0; i < inputs.length; i++) {
-            const name = this.type && this.type.inputs && i < this.type.inputs.length ? this.type.inputs[i].name : `input${i}`;
-            const values = [value(inputs[i])];
+            const metadata = this.type && this.type.inputs && i < this.type.inputs.length ? this.type.inputs[i] : null;
+            const name = metadata ? metadata.name : `input${i}`;
+            const type = metadata ? metadata.type : null;
+            const values = [value(inputs[i], type)];
             this.inputs.push(new tosa.Argument(name, values));
         }
         const outputs = operator.outputs || [];
         for (let i = 0; i < outputs.length; i++) {
-            const name = this.type && this.type.outputs && i < this.type.outputs.length ? this.type.outputs[i].name : `output${i}`;
-            const values = [value(outputs[i])];
+            const metadata = this.type && this.type.outputs && i < this.type.outputs.length ? this.type.outputs[i] : null;
+            const name = metadata ? metadata.name : `output${i}`;
+            const type = metadata ? metadata.type : null;
+            const values = [value(outputs[i], type)];
             this.outputs.push(new tosa.Argument(name, values));
         }
         const options = operator.attribute;
@@ -188,33 +203,50 @@ tosa.Node = class {
                     continue;
                 }
                 const schema = context.attribute(opName, name);
-                let attrValue = obj;
-                attrValue = ArrayBuffer.isView(attrValue) ? Array.from(attrValue) : attrValue;
+                let value = ArrayBuffer.isView(obj) ? Array.from(obj) : obj;
                 let visible = true;
                 let type = null;
                 if (schema) {
                     if (schema.visible === false) {
                         visible = false;
                     } else if (schema.default !== undefined) {
-                        if (attrValue === schema.default) {
+                        if (value === schema.default) {
                             visible = false;
                         }
                     }
                 }
-                if (typeof attrValue === 'bigint') {
-                    attrValue = Number(attrValue);
+                if (typeof value === 'bigint') {
+                    value = value.toNumber();
                 }
-                if (typeof attrValue === 'number' && Number.isInteger(attrValue)) {
+                if (typeof value === 'number' && Number.isInteger(value)) {
                     const enumType = enumTypes[name] || null;
                     if (enumType) {
-                        const enumValue = context.enum(enumType, attrValue);
-                        if (enumValue !== attrValue.toString()) {
+                        const enumValue = context.enum(enumType, value);
+                        if (enumValue !== value.toString()) {
                             type = enumType;
-                            attrValue = enumValue;
+                            value = enumValue;
                         }
                     }
                 }
-                this.attributes.push(new tosa.Argument(name, attrValue, type, visible));
+                if (opName !== 'CUSTOM' && obj instanceof Uint8Array) {
+                    const view = new DataView(obj.buffer);
+                    const output = this.outputs[0];
+                    type = output && output.value && output.value[0] && output.value[0].type ? output.value[0].type.dataType : null;
+                    switch (type) {
+                        case 'boolean': value = view.getUint8(0) !== 0; break;
+                        case 'int8': value = view.getInt8(0); break;
+                        case 'int16': value = view.getInt16(0, true); break;
+                        case 'int32': value = view.getInt32(0, true); break;
+                        case 'int64': value = view.getBigInt64(0, true); break;
+                        case 'float16': value = view.getFloat16(0, true); break;
+                        case 'bfloat16': value = view.getBfloat16(0, true); break;
+                        case 'float32': value = view.getFloat32(0, true); break;
+                        case 'float8e4m3': value = view.getFloat8e4m3(0); break;
+                        case 'float8e5m2': value = view.getFloat8e5m2(0); break;
+                        default: throw new tosa.Error(`Unsupported attribute type '${type}.`);
+                    }
+                }
+                this.attributes.push(new tosa.Argument(name, value, type, visible));
             }
         }
     }
@@ -302,6 +334,10 @@ tosa.Context = class {
         for (const [key, value] of Object.entries(schema.DType)) {
             this._dataTypes.set(value, mapping[key] || key.toLowerCase());
         }
+    }
+
+    get schema() {
+        return this._schema;
     }
 
     type(name) {

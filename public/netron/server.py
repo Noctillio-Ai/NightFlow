@@ -16,7 +16,7 @@ import time
 import urllib.parse
 import webbrowser
 
-__version__ = "0.0.0"
+__version__ = "9.3.2"
 
 logger = logging.getLogger(__name__)
 

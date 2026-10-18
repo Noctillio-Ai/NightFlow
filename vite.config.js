@@ -29,7 +29,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           xterm: ["@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-web-links", "@xterm/addon-webgl"],
-          netron: ["netron"],
         },
       },
     },
