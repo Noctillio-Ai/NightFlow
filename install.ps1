@@ -138,6 +138,47 @@ try {
 
     Write-Log "Installed NightFlow $Version [OK]"
 
+    # ---- uv: NightFlow uses it to build each project's Python environment ----
+    # Install it now (per-user, no admin) so the first sync doesn't have to.
+    # Failure isn't fatal: NightFlow checks again and installs uv during sync.
+    function Find-Uv {
+        $cmd = Get-Command uv -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
+        @(
+            $(if ($env:UV_INSTALL_DIR) { Join-Path $env:UV_INSTALL_DIR 'uv.exe' }),
+            $(if ($env:XDG_BIN_HOME) { Join-Path $env:XDG_BIN_HOME 'uv.exe' }),
+            (Join-Path $env:USERPROFILE '.local\bin\uv.exe'),
+            (Join-Path $env:USERPROFILE '.cargo\bin\uv.exe'),
+            (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\uv.exe'),
+            (Join-Path $env:USERPROFILE 'scoop\shims\uv.exe')
+        ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    }
+
+    $uv = Find-Uv
+    if ($uv) {
+        Write-Log "uv found: $uv"
+    } else {
+        Write-Log "uv not found; installing it..."
+        # Run Astral's official installer in its own PowerShell so it can't end
+        # or alter this script. TLS 1.2 for older Windows PowerShell defaults;
+        # hiding the progress bar makes Invoke-RestMethod much faster.
+        $uvCmd = "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; " +
+                 "`$ProgressPreference = 'SilentlyContinue'; irm https://astral.sh/uv/install.ps1 | iex"
+        try {
+            $uvProc = Start-Process -FilePath 'powershell.exe' `
+                -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $uvCmd `
+                -NoNewWindow -PassThru -Wait
+            $uv = Find-Uv
+            if ($uv) {
+                Write-Log "Installed uv: $uv [OK]"
+            } else {
+                Write-Log "uv installer exited with code $($uvProc.ExitCode); NightFlow will install uv during sync."
+            }
+        } catch {
+            Write-Log "Could not install uv ($($_.Exception.Message)); NightFlow will install it during sync."
+        }
+    }
+
     # ---- Relaunch -----------------------------------------------------------
     if ($Relaunch) {
         $exe = @(

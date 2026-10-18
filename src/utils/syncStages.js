@@ -2,6 +2,9 @@
 // The stages run in this order in doSync, so the furthest stage that has
 // logged anything is the one in progress.
 
+// Detailed lines (commands, their output, notes) don't decide a step's state.
+export const DETAIL_TYPES = new Set(["cmd", "out", "note"]);
+
 export const SYNC_STAGES = [
   { key: "workspace", title: "Prepare workspace" },
   { key: "python", title: "Set up Python environment" },
@@ -12,9 +15,9 @@ export const SYNC_STAGES = [
 /** Stage index (0–3) a log message belongs to, or -1 for overall messages. */
 export function stageOf(message) {
   const m = String(message || "").toLowerCase();
-  // Check Python first: its "ready" message can mention uv or conda.
-  if (m.includes("python") || m.includes("autotimm")) return 1;
-  if (/connecting to ssh|local mode|project directory|directory ready|conda|\buv\b|^warning:/.test(m)) return 0;
+  // Check the environment first: its messages can also mention uv.
+  if (/python|autotimm|environment/.test(m)) return 1;
+  if (/connecting to ssh|local mode|project directory|directory ready|\buv\b|^warning:/.test(m)) return 0;
   if (m.includes("dataset") || /^[✓✗⚠]/.test(m)) return 2;
   if (/loading runs|run logs?|synced metrics/.test(m)) return 3;
   return -1;
@@ -33,6 +36,7 @@ export function buildSyncSteps(logs = [], phase = "idle") {
   const perStage = SYNC_STAGES.map(() => []);
   let current = -1;
   for (const log of logs) {
+    if (DETAIL_TYPES.has(log.type)) continue;
     const s = stageOf(log.message);
     if (s < 0) continue;
     perStage[s].push(log);

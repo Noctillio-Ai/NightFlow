@@ -168,6 +168,7 @@ export function DatasetBrowserView() {
   const [viewMode, setViewMode] = usePref("nf-dataset-view", "grid");
   const [density, setDensity] = usePref("nf-dataset-density", "auto");
   const searchRef = useRef(null);
+  const scrollRef = useRef(null); // the image area — the only part that scrolls
 
   const isCsvOrJsonl = project?.datasetFormat === "CSV" || project?.datasetFormat === "JSONL";
   const datasetFormat = project?.datasetFormat || "Folder";
@@ -271,6 +272,11 @@ export function DatasetBrowserView() {
 
   const images = data?.images || [];
   const total = data?.total || 0;
+
+  // New page, split or filter: start the image area from the top.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [offset, effectiveSplit, filterKey, searchQuery]);
 
   const stepLightbox = useCallback((delta) => {
     setLightboxIdx((idx) => {
@@ -517,48 +523,52 @@ export function DatasetBrowserView() {
             {filtering && <button class="db-link" onClick={clearFilters}>Clear filters</button>}
           </div>
 
-          {loading && !data ? (
-            <div class="db-grid" style={gridStyle}>
-              {Array.from({ length: 14 }, (_, i) => <div key={i} class="db-card-img db-skeleton" />)}
-            </div>
-          ) : images.length === 0 ? (
-            <div class="db-empty">
-              <strong>No images</strong>
-              <span>
-                {searchQuery ? `Nothing matches “${searchQuery}”.` : selectedClasses.size > 0 ? "No images in the selected classes." : "No images were found in this dataset."}
-              </span>
-              {filtering && <button class="dash-btn dash-btn--quiet" onClick={clearFilters}>Clear filters</button>}
-            </div>
-          ) : viewMode === "grid" ? (
-            <div class={`db-grid${loading ? " db-loading" : ""}`} style={gridStyle}>
-              {images.map((img, i) => {
-                const filename = extractFilename(img.path);
-                return (
-                  <button key={img.path} class="db-card-img" onClick={() => setLightboxIdx(i)} title={`${img.label} — ${filename}`}>
-                    <span class="db-thumb"><img src={convertFileSrc(img.path)} alt={img.label} loading="lazy" /></span>
-                    <span class="db-card-meta">
+          <div class="db-viewport">
+            <div class={`db-scroll${total > PAGE_SIZE ? " db-scroll--paged" : ""}`} ref={scrollRef}>
+              {loading && !data ? (
+                <div class="db-grid" style={gridStyle}>
+                  {Array.from({ length: 14 }, (_, i) => <div key={i} class="db-card-img db-skeleton" />)}
+                </div>
+              ) : images.length === 0 ? (
+                <div class="db-empty">
+                  <strong>No images</strong>
+                  <span>
+                    {searchQuery ? `Nothing matches “${searchQuery}”.` : selectedClasses.size > 0 ? "No images in the selected classes." : "No images were found in this dataset."}
+                  </span>
+                  {filtering && <button class="dash-btn dash-btn--quiet" onClick={clearFilters}>Clear filters</button>}
+                </div>
+              ) : viewMode === "grid" ? (
+                <div class={`db-grid${loading ? " db-loading" : ""}`} style={gridStyle}>
+                  {images.map((img, i) => {
+                    const filename = extractFilename(img.path);
+                    return (
+                      <button key={img.path} class="db-card-img" onClick={() => setLightboxIdx(i)} title={`${img.label} — ${filename}`}>
+                        <span class="db-thumb"><img src={convertFileSrc(img.path)} alt={img.label} loading="lazy" /></span>
+                        <span class="db-card-meta">
+                          <span class="db-card-label"><span class="db-dot" style={{ background: colorOf(img.label) }} />{img.label}</span>
+                          <span class="db-card-file">{filename}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div class={`db-list${loading ? " db-loading" : ""}`} role="list">
+                  {images.map((img, i) => (
+                    <button key={img.path} class="db-row" role="listitem" onClick={() => setLightboxIdx(i)}>
+                      <span class="db-row-n">{(offset + i + 1).toLocaleString()}</span>
+                      <span class="db-row-thumb"><img src={convertFileSrc(img.path)} alt="" loading="lazy" /></span>
                       <span class="db-card-label"><span class="db-dot" style={{ background: colorOf(img.label) }} />{img.label}</span>
-                      <span class="db-card-file">{filename}</span>
-                    </span>
-                  </button>
-                );
-              })}
+                      <span class="db-row-file">{extractFilename(img.path)}</span>
+                      <span class="db-row-path" title={img.path}><bdi>{img.path}</bdi></span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          ) : (
-            <div class={`db-list${loading ? " db-loading" : ""}`} role="list">
-              {images.map((img, i) => (
-                <button key={img.path} class="db-row" role="listitem" onClick={() => setLightboxIdx(i)}>
-                  <span class="db-row-n">{(offset + i + 1).toLocaleString()}</span>
-                  <span class="db-row-thumb"><img src={convertFileSrc(img.path)} alt="" loading="lazy" /></span>
-                  <span class="db-card-label"><span class="db-dot" style={{ background: colorOf(img.label) }} />{img.label}</span>
-                  <span class="db-row-file">{extractFilename(img.path)}</span>
-                  <span class="db-row-path" title={img.path}><bdi>{img.path}</bdi></span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {total > PAGE_SIZE && <Pagination offset={offset} total={total} onPage={(p) => setOffset(p * PAGE_SIZE)} />}
+            {/* Floating page controls over the bottom of the image area */}
+            {total > PAGE_SIZE && <Pagination offset={offset} total={total} onPage={(p) => setOffset(p * PAGE_SIZE)} />}
+          </div>
         </section>
       </div>
 

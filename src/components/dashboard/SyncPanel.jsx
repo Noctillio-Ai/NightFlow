@@ -13,7 +13,7 @@ import {
   toggleSshConnection,
 } from "../../state/dashboard.js";
 import { currentProject } from "../../state/projects.js";
-import { buildSyncSteps, formatElapsed, SYNC_STAGES } from "../../utils/syncStages.js";
+import { buildSyncSteps, formatElapsed, SYNC_STAGES, DETAIL_TYPES } from "../../utils/syncStages.js";
 import { Dot } from "./Card.jsx";
 import { AlertIcon, CheckIcon, CopyIcon, LockIcon, RefreshIcon, XIcon } from "./icons.jsx";
 
@@ -22,10 +22,10 @@ function stageAbout(key, remote) {
   switch (key) {
     case "workspace":
       return remote
-        ? "Connecting over SSH, creating the project folder on the remote machine, and checking for conda or uv to manage Python."
-        : "Creating the project folder on this computer and checking for conda or uv to manage Python.";
+        ? "Connecting over SSH, creating the project folder on the remote machine, and making sure uv is installed to manage Python."
+        : "Creating the project folder on this computer and making sure uv is installed to manage Python.";
     case "python":
-      return "Building an isolated Python 3.12 environment (.venv) in the project folder and installing AutoTimm. The first sync downloads packages and can take a few minutes; later syncs reuse it.";
+      return "Building an isolated Python 3.12 environment (.venv) with uv and installing the latest AutoTimm. The first sync downloads packages and can take a few minutes; later syncs reuse the environment and only reinstall AutoTimm.";
     case "dataset":
       return "Checking that every dataset path exists and that the folder layout matches the format you chose.";
     case "runs":
@@ -36,7 +36,7 @@ function stageAbout(key, remote) {
 }
 
 const IDLE_DETAIL = {
-  workspace: "Project folder and package manager",
+  workspace: "Project folder and uv",
   python: "Python 3.12 environment with AutoTimm",
   dataset: "Dataset paths and folder layout",
   runs: "Runs and metrics already on disk",
@@ -63,9 +63,17 @@ function useTicker(on) {
 function LogView({ logs }) {
   const ref = useRef(null);
   const [copied, setCopied] = useState(false);
+  const [detailed, setDetailed] = useState(true);
+  const shown = detailed ? logs : logs.filter((l) => !DETAIL_TYPES.has(l.type));
+  // Follow new lines unless the user has scrolled up to read.
+  const stick = useRef(true);
+  const onScroll = (e) => {
+    const el = e.currentTarget;
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  };
   useEffect(() => {
-    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [logs.length]);
+    if (stick.current && ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [shown.length, detailed]);
 
   const copy = async () => {
     try {
@@ -80,18 +88,23 @@ function LogView({ logs }) {
   return (
     <div class="dash-sync-log">
       <div class="dash-sync-log-head">
-        <span>Sync log</span>
+        <span>Sync log {logs.length > 0 && <span class="dash-muted">· {shown.length.toLocaleString()} lines</span>}</span>
         {logs.length > 0 && (
-          <button class="dash-sync-log-copy" onClick={copy} title="Copy the full log">
-            {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />} {copied ? "Copied" : "Copy"}
-          </button>
+          <div class="dash-sync-log-actions">
+            <button class={`dash-sync-log-copy${detailed ? " active" : ""}`} onClick={() => setDetailed(!detailed)} aria-pressed={detailed} title="Show every command and its output">
+              Details
+            </button>
+            <button class="dash-sync-log-copy" onClick={copy} title="Copy the full log">
+              {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />} {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
         )}
       </div>
-      <div class="dash-sync-log-body" ref={ref} role="log" aria-live="polite">
+      <div class="dash-sync-log-body" ref={ref} onScroll={onScroll} role="log" aria-live="polite">
         {logs.length === 0 ? (
           <span class="dash-sync-log-empty">Messages appear here once the sync starts.</span>
         ) : (
-          logs.map((l, i) => (
+          shown.map((l, i) => (
             <div key={i} class={`dash-sync-log-line dash-sync-log-line--${l.type}`}>
               <span class="dash-sync-log-time">{l.timestamp}</span>
               <span class="dash-sync-log-msg">{l.message}</span>
@@ -117,15 +130,17 @@ export function SyncPanel() {
   const progress = syncProgress.value;
   const startedAt = syncStartedAt.value;
   const settingsChanged = resyncReason.value === "settings";
+  const migratingToUv = resyncReason.value === "uv-migration";
   useTicker(syncing);
 
-  // Saved settings invalidated the last sync: start it without waiting for a click.
-  // Runs once per mount, so a failed sync falls back to the button.
+  // Saved settings (or the move from conda to uv) invalidated the last sync:
+  // start it without waiting for a click. Runs once per mount, so a failed
+  // sync falls back to the button.
   useEffect(() => {
-    if (resyncReason.value === "settings" && !dashboardSyncing.value) syncDashboard();
+    if (resyncReason.value && !dashboardSyncing.value) syncDashboard();
   }, []);
 
-  const lastMessage = logs[logs.length - 1]?.message || "";
+  const lastMessage = [...logs].reverse().find((l) => !DETAIL_TYPES.has(l.type))?.message || "";
   const phase = complete ? "complete" : syncing ? "syncing" : /^Sync failed/.test(lastMessage) ? "failed" : "idle";
   // Logs restored from an earlier sync don't describe this one.
   const live = phase !== "idle";
@@ -138,14 +153,16 @@ export function SyncPanel() {
     phase === "complete" ? "Sync complete"
       : phase === "syncing" ? "Syncing project data"
         : phase === "failed" ? "Sync failed"
-          : settingsChanged ? "Settings changed" : "Sync project data";
+          : settingsChanged ? "Settings changed" : migratingToUv ? "Switching to uv" : "Sync project data";
   const subtitle =
     phase === "syncing" ? (current ? `Step ${currentIdx + 1} of ${SYNC_STAGES.length} · ${current.title}` : "Starting…")
       : phase === "complete" ? "Everything is ready. Opening the dashboard…"
         : phase === "failed" ? (current ? `Stopped at step ${currentIdx + 1} · ${current.title}` : "The sync stopped before finishing.")
           : settingsChanged
             ? "Your settings changed since the last sync, so the checks below need to run again."
-            : "Prepare the training environment, check the dataset, and import existing runs.";
+            : migratingToUv
+              ? "This project's Python environment was built with conda. Syncing replaces it with a faster uv environment; the first sync downloads packages again."
+              : "Prepare the training environment, check the dataset, and import existing runs.";
 
   return (
     <div class="dash-sync">

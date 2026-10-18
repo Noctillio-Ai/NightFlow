@@ -2,11 +2,14 @@
    Dataset browser
    ======================================== */
 
+/* The view fills the content area; only the image area scrolls. */
 .db {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .db-muted { color: var(--text-muted); }
@@ -85,13 +88,15 @@
 /* ---------- Layout ---------- */
 
 .db-body {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
   gap: 20px;
-  align-items: start;
 }
 
-.db-side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; }
+/* Stays put beside the images; scrolls on its own only if the class list is very long. */
+.db-side { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 
 .db-card {
   border-radius: 14px;
@@ -178,7 +183,22 @@
 
 /* ---------- Toolbar + results line ---------- */
 
-.db-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.db-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 0; }
+
+.db-viewport { position: relative; flex: 1; min-height: 0; }
+
+.db-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Room for hover lift at the top and the scrollbar on the right. */
+  padding: 4px 6px 16px 2px;
+  margin-right: -6px;
+  scrollbar-width: thin;
+}
+/* Keep the last row clear of the floating page bar. */
+.db-scroll--paged { padding-bottom: 88px; }
 
 .db-toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
 
@@ -310,16 +330,34 @@
 .db-row-file { font-family: var(--dash-mono); font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .db-row-path { font-family: var(--dash-mono); font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 
-/* ---------- Pagination ---------- */
+/* ---------- Pagination (floating bar) ---------- */
 
-.db-pagination { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 8px 0 4px; flex-wrap: wrap; }
-.db-pages { display: inline-flex; align-items: center; gap: 4px; padding: 5px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-surface); }
+.db-pagination {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 16px 6px 6px;
+  border-radius: 14px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-surface) 82%, transparent);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: 0 12px 32px #0006, 0 2px 6px #0003;
+  white-space: nowrap;
+}
+:root[data-theme="light"] .db-pagination { box-shadow: 0 12px 32px #0002, 0 2px 6px #0001; }
+.db-pages { display: inline-flex; align-items: center; gap: 4px; }
 .db-page {
   min-width: 34px;
   height: 34px;
   padding: 0 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 9px;
   background: none;
   color: var(--text-secondary);
   font: inherit;
@@ -332,7 +370,14 @@
 .db-page--arrow { font-size: 17px; line-height: 1; }
 .db-page--active, .db-page--active:hover:not(:disabled) { background: #3b82f6; color: #fff; font-weight: 600; }
 .db-page-gap { padding: 0 4px; color: var(--text-muted); }
-.db-pagination-info { font-family: var(--dash-mono); font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.db-pagination-info {
+  padding-left: 14px;
+  border-left: 1px solid var(--border-color);
+  font-family: var(--dash-mono);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
 
 /* ---------- Empty ---------- */
 
@@ -428,13 +473,20 @@
 /* ---------- Responsive ---------- */
 
 @media (max-width: 960px) {
-  .db-body { grid-template-columns: minmax(0, 1fr); }
-  .db-side { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  /* Sidebar sits above the images here, so let the page scroll instead and
+     keep the page bar pinned to the bottom of the window. */
+  .db { height: auto; overflow: visible; }
+  .db-body { flex: none; grid-template-columns: minmax(0, 1fr); }
+  .db-side { overflow: visible; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .db-viewport { flex: none; }
+  .db-scroll { position: static; overflow: visible; margin-right: 0; padding-bottom: 8px; }
+  .db-pagination { position: sticky; left: auto; bottom: 12px; transform: none; margin: 4px auto 0; width: fit-content; max-width: 100%; overflow-x: auto; }
   .db-row { grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr); }
   .db-row-n, .db-row-path { display: none; }
 }
 
 @media (max-width: 640px) {
+  .db-pagination-info { display: none; }
   .db-side { grid-template-columns: minmax(0, 1fr); }
   .db-lightbox-nav { position: absolute; bottom: 18px; }
   .db-lightbox-nav--prev { left: 18px; }

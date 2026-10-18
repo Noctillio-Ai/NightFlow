@@ -133,7 +133,6 @@ function SshErrorModal() {
 function buildStepsCommand(project, steps = "fit+test") {
   const env = envInfo.value;
   const useVenv = env && (env.status === "exists" || env.status === "created");
-  const isConda = useVenv && env.envType === "conda";
   const isWindows = project.connectionType !== "remote" && platform.value === "windows";
   const sep = isWindows ? "\\" : "/";
   const pp = (project.projectPath.endsWith("/") || project.projectPath.endsWith("\\"))
@@ -142,15 +141,11 @@ function buildStepsCommand(project, steps = "fit+test") {
 
   const cfg = `${pp}${sep}config.yaml`;
 
-  if (isConda) {
-    return `__STEPS_JSON__:${JSON.stringify({ mode: "conda", env_path: `${pp}${sep}.venv`, config_path: cfg, steps })}`;
-  } else {
-    const venvPython = isWindows
-      ? `${pp}\\.venv\\Scripts\\python.exe`
-      : `${pp}/.venv/bin/python`;
-    const python = useVenv ? venvPython : (isWindows ? "python" : "python3");
-    return `__STEPS_JSON__:${JSON.stringify({ mode: "direct", env_path: python, config_path: cfg, steps })}`;
-  }
+  const venvPython = isWindows
+    ? `${pp}\\.venv\\Scripts\\python.exe`
+    : `${pp}/.venv/bin/python`;
+  const python = useVenv ? venvPython : (isWindows ? "python" : "python3");
+  return `__STEPS_JSON__:${JSON.stringify({ mode: "direct", env_path: python, config_path: cfg, steps })}`;
 }
 
 function buildTrainingCommand(project) {
@@ -165,7 +160,6 @@ function buildTestCommand(project) {
 function buildCommandDisplay(project, steps = "fit+test") {
   const env = envInfo.value;
   const useVenv = env && (env.status === "exists" || env.status === "created");
-  const isConda = useVenv && env.envType === "conda";
   const isWindows = project.connectionType !== "remote" && platform.value === "windows";
   const sep = isWindows ? "\\" : "/";
   const pp = (project.projectPath.endsWith("/") || project.projectPath.endsWith("\\"))
@@ -175,18 +169,12 @@ function buildCommandDisplay(project, steps = "fit+test") {
   const cfg = `${pp}${sep}config.yaml`;
 
   const cmds = [];
-  if (isConda) {
-    const run = `conda run --live-stream -p ${pp}${sep}.venv python -m autotimm`;
-    if (steps.includes("fit"))  cmds.push(`${run} fit  --config ${cfg}`);
-    if (steps.includes("test")) cmds.push(`${run} test --config ${cfg}`);
-  } else {
-    const venvPy = isWindows
-      ? `${pp}\\.venv\\Scripts\\python.exe`
-      : `${pp}/.venv/bin/python`;
-    const py = useVenv ? venvPy : (isWindows ? "python" : "python3");
-    if (steps.includes("fit"))  cmds.push(`${py} -m autotimm fit  --config ${cfg}`);
-    if (steps.includes("test")) cmds.push(`${py} -m autotimm test --config ${cfg}`);
-  }
+  const venvPy = isWindows
+    ? `${pp}\\.venv\\Scripts\\python.exe`
+    : `${pp}/.venv/bin/python`;
+  const py = useVenv ? venvPy : (isWindows ? "python" : "python3");
+  if (steps.includes("fit"))  cmds.push(`${py} -m autotimm fit  --config ${cfg}`);
+  if (steps.includes("test")) cmds.push(`${py} -m autotimm test --config ${cfg}`);
   return cmds.join(" &&\n");
 }
 
