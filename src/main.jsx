@@ -8,6 +8,7 @@ import "./run-detail.css";
 import "./compare-runs.css";
 import "./runs.css";
 import "./interpretation.css";
+import "./netron-view.css";
 import "@xterm/xterm/css/xterm.css";
 
 render(<App />, document.getElementById("app"));
