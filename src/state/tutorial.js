@@ -45,7 +45,7 @@ export const tutorialSteps = [
     view: "dashboard",
   },
   {
-    target: ".ssh-status-banner",
+    target: ".dashboard-connect-card",
     title: "Connect",
     body: "Click the Connect button to establish a connection to your remote machine (or localhost). You can manage your SSH keys in Settings. The tutorial will continue once connected.",
     position: "bottom",
@@ -61,14 +61,14 @@ export const tutorialSteps = [
     waitFor: () => dashboardSynced.value,
   },
   {
-    target: ".summary-grid",
-    title: "Summary Cards",
-    body: "After syncing, these cards show an overview of your runs — total count, running, and your best validation and test accuracy.",
+    target: ".dash-results",
+    title: "Results",
+    body: "After syncing, this card shows your best validation and test accuracy and the best run's accuracy curve. Click a result to open that run.",
     position: "top",
     view: "dashboard",
   },
   {
-    target: ".start-training-section",
+    target: ".dash-experiment",
     title: "Launch Training",
     body: "Configure your model, dataset, and hyperparameters, then start training with one click. You can also queue multiple runs to execute sequentially. An ETA will show after the first epoch, and you'll get an OS notification when training finishes.",
     position: "top",

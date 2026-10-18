@@ -30,6 +30,7 @@ const _defaultState = () => ({
   uvInfo: null,
   envInfo: null,
   syncLogs: [],
+  lastSyncedAt: null,
 });
 
 const _projectState = signal({}); // { [projectId]: ProjectState }
@@ -81,6 +82,9 @@ export const envInfo = computed(
 );
 export const syncLogs = computed(
   () => _getState(currentProjectId.value).syncLogs,
+);
+export const lastSyncedAt = computed(
+  () => _getState(currentProjectId.value).lastSyncedAt,
 );
 
 // ── View availability ─────────────────────────────────────────────────────────
@@ -435,11 +439,13 @@ export async function syncDashboard() {
     });
 
     // Persist sync metadata to IndexedDB
+    const syncedAt = new Date().toISOString();
+    _setState(projectId, { lastSyncedAt: syncedAt });
     const state = _getState(projectId);
     try {
       await saveSyncMetadata(projectId, {
         synced: true,
-        lastSyncedAt: new Date().toISOString(),
+        lastSyncedAt: syncedAt,
         condaInfo: state.condaInfo,
         uvInfo: state.uvInfo,
         envInfo: state.envInfo,
@@ -856,6 +862,7 @@ export async function restoreSyncState(projectId) {
       uvInfo: metadata.uvInfo ?? null,
       envInfo: metadata.envInfo ?? null,
       syncLogs: metadata.syncLogs ?? [],
+      lastSyncedAt: metadata.lastSyncedAt ?? null,
     });
     if (metadata.datasetPathStatus) {
       datasetPathStatus.value = metadata.datasetPathStatus;

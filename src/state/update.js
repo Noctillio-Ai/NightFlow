@@ -1,8 +1,8 @@
 import { signal } from "@preact/signals";
-import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 
-const GITHUB_OWNER = "theja-vanka";
-const GITHUB_REPO = "NightFlow";
+// Must match the repo the backend checks and the installer script downloads from.
+const GITHUB_REPO = "Noctillio-Ai/NightFlow";
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const DISMISSED_KEY = "nightflow_update_dismissed";
 
@@ -21,6 +21,12 @@ export const releaseUrl = signal(null);
 /** @type {import("@preact/signals").Signal<boolean>} */
 export const updateDismissed = signal(false);
 
+/** @type {import("@preact/signals").Signal<boolean>} */
+export const updateInstalling = signal(false);
+
+/** @type {import("@preact/signals").Signal<string|null>} */
+export const updateError = signal(null);
+
 /**
  * Compare two semver strings. Returns true if remote > local.
  */
@@ -37,19 +43,12 @@ function isNewer(remote, local) {
 
 export async function checkForUpdate() {
   try {
-    const current = await getVersion();
-    currentVersion.value = current;
-
-    const resp = await fetch(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
-      { headers: { Accept: "application/vnd.github.v3+json" } }
-    );
-    if (!resp.ok) return;
-
-    const data = await resp.json();
-    const tag = data.tag_name; // e.g. "v0.2.0"
-    latestVersion.value = tag.replace(/^v/, "");
-    releaseUrl.value = data.html_url;
+    // The backend queries GitHub with curl, so this isn't subject to webview CSP/CORS.
+    const info = await invoke("check_for_update");
+    currentVersion.value = info.current;
+    latestVersion.value = info.latest;
+    const tag = `v${info.latest}`;
+    releaseUrl.value = `https://github.com/${GITHUB_REPO}/releases/tag/${tag}`;
 
     const dismissed = localStorage.getItem(DISMISSED_KEY);
     if (dismissed === tag) {
@@ -58,10 +57,26 @@ export async function checkForUpdate() {
       return;
     }
 
-    updateAvailable.value = isNewer(tag, current);
+    updateAvailable.value = isNewer(info.latest, info.current);
     updateDismissed.value = false;
   } catch {
     // Silently fail — no network, rate-limited, etc.
+  }
+}
+
+/**
+ * Run the bundled installer script for the latest release. On success the
+ * backend quits the app; the script replaces it and relaunches.
+ */
+export async function installUpdate() {
+  if (updateInstalling.value) return;
+  updateInstalling.value = true;
+  updateError.value = null;
+  try {
+    await invoke("install_update", { version: latestVersion.value });
+  } catch (e) {
+    updateError.value = String(e);
+    updateInstalling.value = false;
   }
 }
 

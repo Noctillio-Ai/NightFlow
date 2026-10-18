@@ -55,6 +55,10 @@ function _set(projectId, updates) {
 export const trainingActive = computed(
   () => _get(currentProjectId.value).active,
 );
+/** True while any project has a training/test process running. */
+export const anyTrainingActive = computed(() =>
+  Object.values(_trainingState.value).some((s) => s.active),
+);
 export const trainingReconnected = computed(
   () => _get(currentProjectId.value).reconnected,
 );
@@ -66,6 +70,7 @@ export const trainingMaxEpochs = computed(
 export const trainingStep = computed(() => _get(currentProjectId.value).step);
 export const trainingLoss = computed(() => _get(currentProjectId.value).loss);
 export const trainingLossCurve = computed(() => _get(currentProjectId.value).lossCurve);
+export const trainingAccCurve = computed(() => _get(currentProjectId.value).accCurve);
 export const trainingMetrics = computed(
   () => _get(currentProjectId.value).metrics,
 );

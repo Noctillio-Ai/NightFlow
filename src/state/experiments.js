@@ -116,6 +116,14 @@ export async function addRun(run) {
 
 // Update an existing run
 export async function updateRun(id, updates) {
+  // Stamp the first transition into a terminal state so the runs table can
+  // show a duration. Runs imported by sync never get one and render "—".
+  if (updates.status === "completed" || updates.status === "failed") {
+    const existing = allRuns.value.find((r) => r.id === id);
+    if (existing && !existing.finishedAt && !updates.finishedAt) {
+      updates = { ...updates, finishedAt: new Date().toISOString() };
+    }
+  }
   try {
     await dbUpdateRun(id, updates);
     allRuns.value = allRuns.value.map((r) =>

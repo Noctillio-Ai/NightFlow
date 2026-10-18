@@ -33,7 +33,7 @@ import { EmptyProjectsScreen } from "./components/EmptyProjectsScreen.jsx";
 import { TutorialOverlay } from "./components/TutorialOverlay.jsx";
 import { maybeStartTutorial } from "./state/tutorial.js";
 
-const shortcutsOpen = signal(false);
+export const shortcutsOpen = signal(false);
 export const aboutOpen = signal(false);
 
 function CurrentView() {

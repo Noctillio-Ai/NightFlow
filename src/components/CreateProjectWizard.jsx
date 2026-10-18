@@ -2188,7 +2188,7 @@ export function CreateProjectWizard() {
           <span class="wizard-step-counter">
             {step + 1} / {STEP_COUNT}
           </span>
-          <button class="wizard-close-btn" onClick={closeWizard}>
+          <button class="wizard-close-btn" onClick={closeWizard} aria-label="Close">
             &times;
           </button>
         </div>
