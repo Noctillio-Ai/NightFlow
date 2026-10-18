@@ -18,6 +18,12 @@ export function seriesOf(points) {
   return [...byStep.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v);
 }
 
+/** Position of a metric in the preferred chart order (unknown names last). */
+export function rankMetric(name) {
+  const i = ORDER.indexOf(String(name).toLowerCase());
+  return i === -1 ? ORDER.length : i;
+}
+
 /** Losses and errors improve downwards; everything else upwards. */
 export const lowerIsBetter = (name) => /loss|error|mae|mse|rmse/i.test(name);
 
@@ -57,13 +63,9 @@ export function pairMetrics(scalars = {}) {
       if (values.length > 1) group(tag).train = values;
     }
   }
-  const rank = (name) => {
-    const i = ORDER.indexOf(name.toLowerCase());
-    return i === -1 ? ORDER.length : i;
-  };
   return [...groups.values()]
     .filter((g) => g.train.length + g.val.length > 1)
-    .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
+    .sort((a, b) => rankMetric(a.name) - rankMetric(b.name) || a.name.localeCompare(b.name));
 }
 
 /**

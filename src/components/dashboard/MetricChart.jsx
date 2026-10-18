@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "preact/hooks";
+import { spreadLabels } from "../../utils/chartLayout.js";
 
 const PAD = { top: 16, right: 12, bottom: 34, left: 44 };
 let chartSeq = 0;
+const END_LABEL_W = 54;
+const END_LABEL_H = 20;
 
 /** ~`count` evenly spaced "nice" ticks covering [min, max]. */
 function niceTicks(min, max, count = 3) {
@@ -49,7 +52,9 @@ function epochTicks(n, maxTicks) {
  * series: [{ label, data: number[], color, area? }]
  * marker: { series: index, at: epochIndex } highlights one point (e.g. best epoch).
  */
-export function MetricChart({ series, height: fixedHeight = 200, fill = false, yFormat = (v) => v.toFixed(2), tickFormat, yDomain, marker, empty = "No data yet" }) {
+export function MetricChart({ series, height: fixedHeight = 200, fill = false, yFormat = (v) => v.toFixed(2), tickFormat, yDomain, marker, endLabels = false, dots = false, empty = "No data yet" }) {
+  // End labels sit to the right of the plot.
+  const P = endLabels ? { ...PAD, right: END_LABEL_W + 14 } : PAD;
   const [ref, size] = useSize();
   const width = size.width;
   // `fill` charts take their container's height (set by CSS), never below the given height.
@@ -80,17 +85,17 @@ export function MetricChart({ series, height: fixedHeight = 200, fill = false, y
   yMin = Math.min(yMin, ticks[0]);
   yMax = Math.max(yMax, ticks[ticks.length - 1]);
 
-  const cw = Math.max(10, width - PAD.left - PAD.right);
-  const ch = height - PAD.top - PAD.bottom;
-  const x = (i) => PAD.left + (n <= 1 ? cw / 2 : (i / (n - 1)) * cw);
-  const y = (v) => PAD.top + ch - ((v - yMin) / (yMax - yMin || 1)) * ch;
+  const cw = Math.max(10, width - P.left - P.right);
+  const ch = height - P.top - P.bottom;
+  const x = (i) => P.left + (n <= 1 ? cw / 2 : (i / (n - 1)) * cw);
+  const y = (v) => P.top + ch - ((v - yMin) / (yMax - yMin || 1)) * ch;
 
   const xTicks = epochTicks(n, Math.max(2, Math.floor(cw / 70))).map((e) => e - 1);
 
   const onMove = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const px = e.clientX - rect.left;
-    const i = n <= 1 ? 0 : Math.round(((px - PAD.left) / cw) * (n - 1));
+    const i = n <= 1 ? 0 : Math.round(((px - P.left) / cw) * (n - 1));
     setHover(Math.max(0, Math.min(n - 1, i)));
   };
 
@@ -120,19 +125,19 @@ export function MetricChart({ series, height: fixedHeight = 200, fill = false, y
 
         {ticks.map((t) => (
           <g key={t}>
-            <line class="dash-chart-grid" x1={PAD.left} x2={PAD.left + cw} y1={y(t)} y2={y(t)} />
-            <text class="dash-chart-tick" x={PAD.left - 8} y={y(t)} text-anchor="end" dominant-baseline="middle">
+            <line class="dash-chart-grid" x1={P.left} x2={P.left + cw} y1={y(t)} y2={y(t)} />
+            <text class="dash-chart-tick" x={P.left - 8} y={y(t)} text-anchor="end" dominant-baseline="middle">
               {fmtTick(t)}
             </text>
           </g>
         ))}
         {xTicks.map((i) => (
           <g key={`x${i}`}>
-            <line class="dash-chart-grid dash-chart-grid--v" x1={x(i)} x2={x(i)} y1={PAD.top} y2={PAD.top + ch} />
-            <text class="dash-chart-tick" x={x(i)} y={PAD.top + ch + 14} text-anchor="middle">{i + 1}</text>
+            <line class="dash-chart-grid dash-chart-grid--v" x1={x(i)} x2={x(i)} y1={P.top} y2={P.top + ch} />
+            <text class="dash-chart-tick" x={x(i)} y={P.top + ch + 14} text-anchor="middle">{i + 1}</text>
           </g>
         ))}
-        <text class="dash-chart-axis" x={PAD.left + cw / 2} y={height - 3} text-anchor="middle">Epoch</text>
+        <text class="dash-chart-axis" x={P.left + cw / 2} y={height - 3} text-anchor="middle">Epoch</text>
 
         {valid.map((s, si) => {
           const pts = s.data.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
@@ -140,7 +145,7 @@ export function MetricChart({ series, height: fixedHeight = 200, fill = false, y
             <g key={s.label}>
               {s.area && s.data.length > 1 && (
                 <polygon
-                  points={`${x(0)},${PAD.top + ch} ${pts.join(" ")} ${x(s.data.length - 1)},${PAD.top + ch}`}
+                  points={`${x(0)},${P.top + ch} ${pts.join(" ")} ${x(s.data.length - 1)},${P.top + ch}`}
                   fill={`url(#${uid.current}-${si})`}
                 />
               )}
@@ -153,16 +158,36 @@ export function MetricChart({ series, height: fixedHeight = 200, fill = false, y
           );
         })}
 
+        {dots &&
+          n <= 40 &&
+          valid.map((s) =>
+            s.data.map((v, i) => <circle key={`${s.label}-${i}`} cx={x(i)} cy={y(v)} r="2.6" fill={s.color} class="dash-chart-pt" />),
+          )}
+
+        {endLabels &&
+          spreadLabels(valid.map((s) => y(s.data[s.data.length - 1])), END_LABEL_H + 3, P.top, P.top + ch).map((ly, si) => {
+            const s = valid[si];
+            const lx = P.left + cw + 10;
+            return (
+              <g key={`end-${s.label}`} class="dash-chart-end">
+                {/* A series that stops early keeps its label, without a leader line across the plot. */}
+                {s.data.length === n && <line x1={x(n - 1)} x2={lx} y1={y(s.data[n - 1])} y2={ly} stroke={s.color} stroke-opacity="0.5" />}
+                <rect x={lx} y={ly - END_LABEL_H / 2} width={END_LABEL_W} height={END_LABEL_H} rx="5" fill={s.color} />
+                <text x={lx + END_LABEL_W / 2} y={ly} text-anchor="middle" dominant-baseline="central">{yFormat(s.data[s.data.length - 1])}</text>
+              </g>
+            );
+          })}
+
         {markerAt != null && (
           <g>
-            <line class="dash-chart-marker" x1={x(markerAt)} x2={x(markerAt)} y1={PAD.top} y2={PAD.top + ch} />
+            <line class="dash-chart-marker" x1={x(markerAt)} x2={x(markerAt)} y1={P.top} y2={P.top + ch} />
             <circle cx={x(markerAt)} cy={y(markerSeries.data[markerAt])} r="4.5" fill={markerSeries.color} class="dash-chart-dot" />
           </g>
         )}
 
         {hover != null && (
           <g>
-            <line class="dash-chart-hover" x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={PAD.top + ch} />
+            <line class="dash-chart-hover" x1={x(hover)} x2={x(hover)} y1={P.top} y2={P.top + ch} />
             {valid.map((s) =>
               hover < s.data.length ? (
                 <circle key={s.label} cx={x(hover)} cy={y(s.data[hover])} r="3.5" fill={s.color} class="dash-chart-dot" />
@@ -183,7 +208,7 @@ export function MetricChart({ series, height: fixedHeight = 200, fill = false, y
       {hover != null && (
         <div
           class={`dash-chart-tip${x(hover) > width * 0.65 ? " dash-chart-tip--left" : ""}`}
-          style={{ left: `${x(hover)}px`, top: `${PAD.top}px` }}
+          style={{ left: `${x(hover)}px`, top: `${P.top}px` }}
         >
           <div class="dash-chart-tip-title">Epoch {hover + 1}</div>
           {valid.map((s) =>
