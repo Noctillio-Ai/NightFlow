@@ -264,7 +264,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "The container name for the `SparseTensorsMap` created by this op.",
+        "description": "The container name for the `SparseTensorsMap` created by this op.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -341,7 +341,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "The container name for the `SparseTensorsMap` created by this op.",
+        "description": "The container name for the `SparseTensorsMap` created by this op.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -2247,7 +2247,7 @@
       {
         "name": "tolerance",
         "type": "float32",
-        "default": 9.999999747378752e-06
+        "default": 0.000009999999747378752
       }
     ],
     "inputs": [
@@ -3099,7 +3099,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -3148,7 +3148,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]. Must be one of the following: `NDHWC`, `NCDHW`.",
+        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NDHWC\". Must be one of the following: `NDHWC`, `NCDHW`.",
         "default": "NDHWC"
       },
       {
@@ -3196,7 +3196,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]. Must be one of the following: `NDHWC`, `NCDHW`.",
+        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NDHWC\". Must be one of the following: `NDHWC`, `NCDHW`.",
         "default": "NDHWC"
       },
       {
@@ -3249,7 +3249,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -3341,7 +3341,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this barrier is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this barrier is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -3804,7 +3804,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "Controls the scope of sharing of this batch.",
+        "description": "Controls the scope of sharing of this batch.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -5233,13 +5233,13 @@
         "name": "forget_bias",
         "type": "float32",
         "description": "The forget gate bias.",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "cell_clip",
         "type": "float32",
         "description": "Value to clip the 'cs' value to.",
-        "default": 3.0
+        "default": 3
       },
       {
         "name": "use_peephole",
@@ -5649,7 +5649,7 @@
         "name": "cell_clip",
         "type": "float32",
         "description": "Value to clip the 'cs' value to.",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "use_peephole",
@@ -8168,7 +8168,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "is_stateless",
@@ -8224,7 +8224,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       }
     ],
     "inputs": [
@@ -8309,7 +8309,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       }
     ],
     "outputs": [
@@ -8345,7 +8345,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       }
     ],
     "inputs": [
@@ -8406,7 +8406,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       }
     ],
     "inputs": [
@@ -8439,7 +8439,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       }
     ],
     "inputs": [
@@ -8500,7 +8500,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       }
     ],
     "inputs": [
@@ -8534,7 +8534,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "is_stateless",
@@ -8590,7 +8590,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       }
     ],
     "inputs": [
@@ -8693,7 +8693,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       }
     ],
     "inputs": [
@@ -8737,7 +8737,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "is_stateless",
@@ -8814,7 +8814,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "is_stateless",
@@ -8880,7 +8880,7 @@
       {
         "name": "timeout_seconds",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       }
     ],
     "inputs": [
@@ -9494,7 +9494,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this accumulator is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this accumulator is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -9794,7 +9794,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Used to set the data format. By default `CHANNELS_FIRST`, uses \n`NHWC (2D) / NDHWC (3D)` or if `CHANNELS_LAST`, uses `NCHW (2D) / NCDHW (3D)`. Must be one of the following: `CHANNELS_FIRST`, `CHANNELS_LAST`.",
+        "description": "Used to set the data format. By default `CHANNELS_LAST`, uses \n`NHWC (2D) / NDHWC (3D)` or if `CHANNELS_FIRST`, uses `NCHW (2D) / NCDHW (3D)`.\nWithout oneDNN, CPU kernels support only \"CHANNELS_LAST\". Must be one of the following: `CHANNELS_FIRST`, `CHANNELS_LAST`.",
         "default": "CHANNELS_LAST"
       },
       {
@@ -9871,7 +9871,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -9939,7 +9939,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -10085,7 +10085,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -10222,13 +10222,13 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]. Must be one of the following: `NDHWC`, `NCDHW`.",
+        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NDHWC\". Must be one of the following: `NDHWC`, `NCDHW`.",
         "default": "NDHWC"
       },
       {
         "name": "dilations",
         "type": "int64[]",
-        "description": "1-D tensor of length 5.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1.",
+        "description": "1-D tensor of length 5.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1. Without oneDNN, CPU kernels do not support\ndilation rates larger than 1.",
         "default": [
           1,
           1,
@@ -10336,13 +10336,13 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]. Must be one of the following: `NDHWC`, `NCDHW`.",
+        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NDHWC\". Must be one of the following: `NDHWC`, `NCDHW`.",
         "default": "NDHWC"
       },
       {
         "name": "dilations",
         "type": "int64[]",
-        "description": "1-D tensor of length 5.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1.",
+        "description": "1-D tensor of length 5.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1. Without oneDNN, CPU kernels do not support\ndilation rates larger than 1.",
         "default": [
           1,
           1,
@@ -10455,13 +10455,13 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]. Must be one of the following: `NDHWC`, `NCDHW`.",
+        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NDHWC\". Must be one of the following: `NDHWC`, `NCDHW`.",
         "default": "NDHWC"
       },
       {
         "name": "dilations",
         "type": "int64[]",
-        "description": "1-D tensor of length 5.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1.",
+        "description": "1-D tensor of length 5.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1. Without oneDNN, CPU kernels do not support\ndilation rates larger than 1.",
         "default": [
           1,
           1,
@@ -10996,7 +10996,7 @@
         "name": "extrapolation_value",
         "type": "float32",
         "description": "Value used for extrapolation, when applicable.",
-        "default": 0.0
+        "default": 0
       }
     ],
     "inputs": [
@@ -11214,7 +11214,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -11300,7 +11300,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -11409,7 +11409,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -11522,7 +11522,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -11654,7 +11654,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -11739,7 +11739,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -11824,7 +11824,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -11899,7 +11899,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -11984,7 +11984,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -12064,7 +12064,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -12154,7 +12154,7 @@
       {
         "name": "dropout",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "seed",
@@ -13469,7 +13469,7 @@
         "name": "acceptable_fraction",
         "type": "float32",
         "description": "The minimum required fraction of lines before a truncated\ninput is accepted.",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "dct_method",
@@ -13647,8 +13647,8 @@
   },
   {
     "name": "DecodeImage",
-    "summary": "Function for decode_bmp, decode_gif, decode_jpeg, decode_webp, and decode_png.",
-    "description": "Detects whether an image is a BMP, GIF, JPEG, WebP, or PNG, and performs the\nappropriate operation to convert the input bytes string into a Tensor of type\ndtype.\n\n*NOTE*: decode_gif and decode_webp return a 4-D\narray [num_frames, height, width, 3], as opposed to decode_bmp,\ndecode_jpeg, and decode_png, which always return 3-D arrays [height,\nwidth, num_channels]. Make sure to take this into account when\nconstructing your graph if you are intermixing animated files with\nBMP, JPEG, and/or PNG files. Alternately, set the expand_animations\nargument of this function to False, in which case the op will return\n3-dimensional tensors and will truncate animations to the first frame.\n\n*NOTE*: If the first frame of an animated GIF does not occupy the entire\ncanvas (maximum frame width x maximum frame height), then it fills the\nunoccupied areas (in the first frame) with zeros (black). For frames after the\nfirst frame that does not occupy the entire canvas, it uses the previous\nframe to fill the unoccupied areas.",
+    "summary": "Function for decode_bmp, decode_gif, decode_jpeg, decode_jxl, decode_webp, and decode_png.",
+    "description": "Detects whether an image is a BMP, GIF, JPEG, JPEG XL, WebP, or PNG, and\nperforms the appropriate operation to convert the input bytes string into a\nTensor of type dtype.\n\n*NOTE*: decode_gif and decode_webp return a 4-D\narray [num_frames, height, width, 3], as opposed to decode_bmp,\ndecode_jpeg, and decode_png, which always return 3-D arrays [height,\nwidth, num_channels]. Make sure to take this into account when\nconstructing your graph if you are intermixing animated files with\nBMP, JPEG, and/or PNG files. Alternately, set the expand_animations\nargument of this function to False, in which case the op will return\n3-dimensional tensors and will truncate animations to the first frame.\n\n*NOTE*: If the first frame of an animated GIF does not occupy the entire\ncanvas (maximum frame width x maximum frame height), then it fills the\nunoccupied areas (in the first frame) with zeros (black). For frames after the\nfirst frame that does not occupy the entire canvas, it uses the previous\nframe to fill the unoccupied areas.",
     "attributes": [
       {
         "name": "channels",
@@ -13668,7 +13668,7 @@
       {
         "name": "expand_animations",
         "type": "boolean",
-        "description": "Controls the output shape of the returned op. If True, the returned op\nwill produce a 3-D tensor for PNG, JPEG, and BMP files; and a 4-D\ntensor for all GIFs and WebP images, whether animated or not. If,\nFalse, the returned op will produce a 3-D tensor for all file types\nand will truncate animated images to the first frame.",
+        "description": "Controls the output shape of the returned op. If True, the returned op\nwill produce a 3-D tensor for PNG, JPEG, JPEG XL, and BMP files; and a\n4-D tensor for all GIFs and WebP images, whether animated or not. If,\nFalse, the returned op will produce a 3-D tensor for all file types\nand will truncate animated images to the first frame.",
         "default": true
       }
     ],
@@ -13739,7 +13739,7 @@
         "name": "acceptable_fraction",
         "type": "float32",
         "description": "The minimum required fraction of lines before a truncated\ninput is accepted.",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "dct_method",
@@ -14474,7 +14474,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -14533,7 +14533,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -14600,7 +14600,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -14665,6 +14665,7 @@
       {
         "name": "axis",
         "type": "int64",
+        "description": "The index of the input dimension along which the dequantization ranges\nvary, for per-channel dequantization. When `axis` is -1 (the default),\ndequantization is per-tensor and `min_range`/`max_range` must be scalars.\nOtherwise `min_range` and `max_range` must be 1-D tensors with as many\nelements as the input's `axis` dimension. Negative values other than -1\nare invalid.",
         "default": -1
       },
       {
@@ -16589,7 +16590,7 @@
   },
   {
     "name": "Erf",
-    "summary": "Computes the [Gauss error function](https://en.wikipedia.org/wiki/Error_function) of `x` element-wise. In statistics, for non-negative values of $x$, the error function has the following interpretation: for a random variable $Y$ that is normally distributed with mean 0 and variance $1/\\sqrt{2}$, $erf(x)$ is the probability that $Y$ falls in the range $[\u2212x, x]$.",
+    "summary": "Computes the [Gauss error function](https://en.wikipedia.org/wiki/Error_function) of `x` element-wise. In statistics, for non-negative values of $x$, the error function has the following interpretation: for a random variable $Y$ that is normally distributed with mean 0 and variance $1/\\sqrt{2}$, $erf(x)$ is the probability that $Y$ falls in the range $[−x, x]$.",
     "attributes": [
       {
         "name": "T",
@@ -18183,7 +18184,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "The name of `container` should start with `'.'` or `letter` or `digit`,\nwith ['-', '.', '/'] or `letter` or `digit` follows several times.",
+        "description": "A non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -18687,7 +18688,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -18732,7 +18733,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -18791,12 +18792,12 @@
       {
         "name": "min",
         "type": "float32",
-        "default": -6.0
+        "default": -6
       },
       {
         "name": "max",
         "type": "float32",
-        "default": 6.0
+        "default": 6
       },
       {
         "name": "num_bits",
@@ -18829,12 +18830,12 @@
       {
         "name": "min",
         "type": "float32",
-        "default": -6.0
+        "default": -6
       },
       {
         "name": "max",
         "type": "float32",
-        "default": 6.0
+        "default": 6
       },
       {
         "name": "num_bits",
@@ -19429,7 +19430,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -19478,7 +19479,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -19540,7 +19541,7 @@
         "name": "distortion",
         "type": "float32",
         "description": "The distortion is used to skew the unigram probability distribution.\nEach weight is first raised to the distortion's power before adding to the\ninternal unigram distribution. As a result, distortion = 1.0 gives regular\nunigram sampling (as defined by the vocab file), and distortion = 0.0 gives\na uniform distribution.",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "num_reserved_ids",
@@ -20090,12 +20091,12 @@
         "name": "epsilon",
         "type": "float32",
         "description": "A small float number added to the variance of x.",
-        "default": 9.999999747378752e-05
+        "default": 0.00009999999747378752
       },
       {
         "name": "exponential_avg_factor",
         "type": "float32",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "data_format",
@@ -20179,7 +20180,7 @@
         "name": "epsilon",
         "type": "float32",
         "description": "A small float number added to the variance of x.",
-        "default": 9.999999747378752e-05
+        "default": 0.00009999999747378752
       },
       {
         "name": "data_format",
@@ -20268,7 +20269,7 @@
         "name": "epsilon",
         "type": "float32",
         "description": "A small float number added to the variance of x.",
-        "default": 9.999999747378752e-05
+        "default": 0.00009999999747378752
       },
       {
         "name": "data_format",
@@ -20357,7 +20358,7 @@
         "name": "epsilon",
         "type": "float32",
         "description": "A small float number added to the variance of x.",
-        "default": 9.999999747378752e-05
+        "default": 0.00009999999747378752
       },
       {
         "name": "data_format",
@@ -20452,12 +20453,12 @@
         "name": "epsilon",
         "type": "float32",
         "description": "A small float number added to the variance of x.",
-        "default": 9.999999747378752e-05
+        "default": 0.00009999999747378752
       },
       {
         "name": "exponential_avg_factor",
         "type": "float32",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "data_format",
@@ -20547,12 +20548,12 @@
         "name": "epsilon",
         "type": "float32",
         "description": "A small float number added to the variance of x.",
-        "default": 9.999999747378752e-05
+        "default": 0.00009999999747378752
       },
       {
         "name": "exponential_avg_factor",
         "type": "float32",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "data_format",
@@ -20947,7 +20948,7 @@
   {
     "name": "GatherV2",
     "summary": "Gather slices from `params` axis `axis` according to `indices`.",
-    "description": "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `params.shape[:axis] +\nindices.shape[batch_dims:] + params.shape[axis + 1:]` where:\n\n```python\n    # Scalar indices (output is rank(params) - 1).\n    output[a_0, ..., a_n, b_0, ..., b_n] =\n      params[a_0, ..., a_n, indices, b_0, ..., b_n]\n\n    # Vector indices (output is rank(params)).\n    output[a_0, ..., a_n, i, b_0, ..., b_n] =\n      params[a_0, ..., a_n, indices[i], b_0, ..., b_n]\n\n    # Higher rank indices (output is rank(params) + rank(indices) - 1).\n    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =\n      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/Gather.png\" alt>\n</div>\n\nNote that on CPU, if an out of bound index is found, an error is returned.\nOn GPU, if an out of bound index is found, a 0 is stored in the\ncorresponding output value.\n\nNote that on TPU, if any dimension of `params` is of size 0 then the output will\nbe the expected shape filled with zeros. On CPU and GPU an error will be\nreturned.\n\nSee also `tf.batch_gather` and `tf.gather_nd`.",
+    "description": "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `params.shape[:axis] +\nindices.shape[batch_dims:] + params.shape[axis + 1:]` where:\n\n```python\n    # Scalar indices (output is rank(params) - 1).\n    output[a_0, ..., a_n, b_0, ..., b_n] =\n      params[a_0, ..., a_n, indices, b_0, ..., b_n]\n\n    # Vector indices (output is rank(params)).\n    output[a_0, ..., a_n, i, b_0, ..., b_n] =\n      params[a_0, ..., a_n, indices[i], b_0, ..., b_n]\n\n    # Higher rank indices (output is rank(params) + rank(indices) - 1).\n    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =\n      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/Gather.png\" alt>\n</div>\n\nNote that on CPU, if an out of bound index is found, an error is returned.\nOn GPU, if an out of bound index is found, a 0 is stored in the\ncorresponding output value. Under XLA compilation (e.g. `tf.function(jit_compile=True)`),\nout of bound indices are not checked and result in implementation-defined behavior.\n\nNote that on TPU, if any dimension of `params` is of size 0 then the output will\nbe the expected shape filled with zeros. On CPU and GPU an error will be\nreturned.\n\nSee also `tf.batch_gather` and `tf.gather_nd`.",
     "attributes": [
       {
         "name": "batch_dims",
@@ -21906,7 +21907,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -21949,7 +21950,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -22450,7 +22451,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -22477,7 +22478,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -23927,7 +23928,7 @@
     "inputs": [
       {
         "name": "iterator",
-        "description": "An resource from an dataset iterator.",
+        "description": "A resource from a dataset iterator.",
         "type": 20
       }
     ],
@@ -24215,7 +24216,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -24250,13 +24251,13 @@
         "name": "bias",
         "type": "float32",
         "description": "An offset (usually positive to avoid dividing by 0).",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "alpha",
         "type": "float32",
         "description": "A scale factor, usually positive.",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "beta",
@@ -24302,13 +24303,13 @@
         "name": "bias",
         "type": "float32",
         "description": "An offset (usually > 0 to avoid dividing by 0).",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "alpha",
         "type": "float32",
         "description": "A scale factor, usually positive.",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "beta",
@@ -24361,13 +24362,13 @@
         "name": "forget_bias",
         "type": "float32",
         "description": "The forget gate bias.",
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "cell_clip",
         "type": "float32",
         "description": "Value to clip the 'cs' value to.",
-        "default": 3.0
+        "default": 3
       },
       {
         "name": "use_peephole",
@@ -26928,7 +26929,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container. Otherwise,\na default container is used.",
+        "description": "If non-empty, this queue is placed in the given container. Otherwise,\na default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -27620,7 +27621,7 @@
   {
     "name": "MatrixSolve",
     "summary": "Solves systems of linear equations.",
-    "description": "`Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is\na tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix\nsatisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `True` then each output matrix satisfies\n`adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.",
+    "description": "`Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is\na tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix\nsatisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `True` then each output matrix satisfies\n`adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result. In particular, under XLA compilation (e.g.\n`tf.function(jit_compile=True)`) the condition is not detected and the\nresult is implementation-defined.",
     "attributes": [
       {
         "name": "adjoint",
@@ -27882,7 +27883,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]. Must be one of the following: `NHWC`, `NCHW`, `NCHW_VECT_C`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`, `NCHW_VECT_C`.",
         "default": "NHWC"
       }
     ],
@@ -27925,7 +27926,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]. Must be one of the following: `NDHWC`, `NCDHW`.",
+        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NDHWC\". Must be one of the following: `NDHWC`, `NCDHW`.",
         "default": "NDHWC"
       },
       {
@@ -27973,7 +27974,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]. Must be one of the following: `NDHWC`, `NCDHW`.",
+        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NDHWC\". Must be one of the following: `NDHWC`, `NCDHW`.",
         "default": "NDHWC"
       },
       {
@@ -28043,7 +28044,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]. Must be one of the following: `NDHWC`, `NCDHW`.",
+        "description": "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NDHWC\". Must be one of the following: `NDHWC`, `NCDHW`.",
         "default": "NDHWC"
       },
       {
@@ -28106,7 +28107,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -28168,7 +28169,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -28214,7 +28215,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -28333,7 +28334,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]. Must be one of the following: `NHWC`, `NCHW`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nWithout oneDNN, CPU kernels support only \"NHWC\". Must be one of the following: `NHWC`, `NCHW`.",
         "default": "NHWC"
       },
       {
@@ -28432,7 +28433,7 @@
       },
       {
         "name": "argmax",
-        "description": "The indices of the maximum values chosen for each output of `max_pool`.",
+        "description": "The indices of the maximum values chosen for each output of `max_pool`.\nAlthough the type constraint allows both int32 and int64, only int64 is\nsupported by the registered kernels. Passing an int32 argmax will fail\nwith a kernel-not-found error.",
         "typeAttr": "Targmax"
       }
     ],
@@ -28466,7 +28467,7 @@
       {
         "name": "data_format",
         "type": "string",
-        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]. Must be one of the following: `NHWC`, `NCHW`, `NCHW_VECT_C`.",
+        "description": "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width].\nWithout oneDNN, CPU kernels do not support \"NCHW\". Must be one of the following: `NHWC`, `NCHW`, `NCHW_VECT_C`.",
         "default": "NHWC"
       }
     ],
@@ -28782,13 +28783,13 @@
         "name": "upper_frequency_limit",
         "type": "float32",
         "description": "The highest frequency to use when calculating the\nceptstrum.",
-        "default": 4000.0
+        "default": 4000
       },
       {
         "name": "lower_frequency_limit",
         "type": "float32",
         "description": "The lowest frequency to use when calculating the\nceptstrum.",
-        "default": 20.0
+        "default": 20
       },
       {
         "name": "filterbank_channel_count",
@@ -29164,7 +29165,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this resource is placed in the given container.\nOtherwise, a default container is used."
+        "description": "If non-empty, this resource is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits."
       },
       {
         "name": "output_types",
@@ -29368,7 +29369,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -29438,7 +29439,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -29511,7 +29512,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -29554,7 +29555,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -29604,7 +29605,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -29653,7 +29654,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -29713,7 +29714,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this variable is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this variable is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -30992,7 +30993,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container. Otherwise,\na default container is used.",
+        "description": "If non-empty, this queue is placed in the given container. Otherwise,\na default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -31537,7 +31538,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -31583,7 +31584,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -33767,7 +33768,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -33813,7 +33814,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -34040,12 +34041,12 @@
       {
         "name": "input_min",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "input_max",
         "type": "float32",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "T",
@@ -34400,6 +34401,7 @@
       {
         "name": "axis",
         "type": "int64",
+        "description": "The index of the input dimension along which the quantization ranges\nvary, for per-channel quantization. When `axis` is -1 (the default),\nquantization is per-tensor and `min_range`/`max_range` must be scalars.\nOtherwise `min_range` and `max_range` must be 1-D tensors with as many\nelements as the input's `axis` dimension. Negative values other than -1\nare invalid.",
         "default": -1
       },
       {
@@ -36458,19 +36460,19 @@
         "name": "given_y_min",
         "type": "float32",
         "description": "Output in `y_min` if `output_range_given` is True.",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "given_y_max",
         "type": "float32",
         "description": "Output in `y_max` if `output_range_given` is True.",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "variance_epsilon",
         "type": "float32",
         "description": "A small float number to avoid dividing by 0.",
-        "default": 9.999999747378752e-06
+        "default": 0.000009999999747378752
       },
       {
         "name": "min_separation",
@@ -39307,7 +39309,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -39370,7 +39372,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -40234,7 +40236,7 @@
         "name": "file_shuffle_shift_ratio",
         "type": "float32",
         "description": "Shifts the list of files after the list is randomly\nshuffled.",
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "file_buffer_size",
@@ -42738,7 +42740,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this accumulator is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this accumulator is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -46819,7 +46821,7 @@
         "description": "The cropped area of the image must contain a fraction of the\nsupplied image within this range.",
         "default": [
           0.05000000074505806,
-          1.0
+          1
         ]
       },
       {
@@ -46902,7 +46904,7 @@
         "description": "The cropped area of the image must contain a fraction of the\nsupplied image within this range.",
         "default": [
           0.05000000074505806,
-          1.0
+          1
         ]
       },
       {
@@ -51980,7 +51982,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this accumulator is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this accumulator is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -55177,7 +55179,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this queue is placed in the given container. Otherwise,\na default container is used.",
+        "description": "If non-empty, this queue is placed in the given container. Otherwise,\na default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -56714,7 +56716,7 @@
         "description": "The cropped area of the image must contain a fraction of the\nsupplied image within this range.",
         "default": [
           0.05000000074505806,
-          1.0
+          1
         ]
       },
       {
@@ -57033,6 +57035,7 @@
       {
         "name": "container",
         "type": "string",
+        "description": "The name of `container` specifies the container in which the resource is placed.\nIf empty, the default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -57054,7 +57057,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "The name of `container` should start with `'.'` or `letter` or `digit`,\nwith ['-', '.', '/'] or `letter` or `digit` follows several times.",
+        "description": "A non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -58211,7 +58214,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -58242,7 +58245,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -58984,7 +58987,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "The container name for the `SparseTensorsMap` read by this op.",
+        "description": "The container name for the `SparseTensorsMap` read by this op.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -61515,7 +61518,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -61547,7 +61550,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -61621,7 +61624,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "The name of `container` should start with `'.'` or `letter` or `digit`,\nwith ['-', '.', '/'] or `letter` or `digit` follows several times.",
+        "description": "A non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -61961,8 +61964,6 @@
   },
   {
     "name": "TpuHandleToProtoKey",
-    "summary": "Converts XRT's uid handles to TensorFlow-friendly input format.",
-    "description": "Converts a uid handle for a compiled program into a vector of proto keys.\n\nXRT compile ops return uids, and the TensorFlow execute op takes a proto\nkey. This op enables a client to compile on TPU using XRT and execute using the\nstandard TensorFlow execute op.\n\n'uid' is the input handle.\n'proto_keys' is a vector of proto keys, one for each core program.",
     "inputs": [
       {
         "name": "uid",
@@ -64134,7 +64135,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "the container this variable is placed in.",
+        "description": "the container this variable is placed in.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -64270,7 +64271,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this variable is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this variable is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -64419,7 +64420,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {
@@ -64446,7 +64447,7 @@
       {
         "name": "container",
         "type": "string",
-        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.",
+        "description": "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used.\nA non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.",
         "default": ""
       },
       {

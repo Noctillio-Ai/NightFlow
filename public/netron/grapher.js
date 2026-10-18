@@ -104,22 +104,18 @@ grapher.Graph = class {
     }
 
     build(document, origin) {
-
         origin = origin || document.getElementById('origin');
-
         const createGroup = (name) => {
             const element = document.createElementNS('http://www.w3.org/2000/svg', 'g');
             element.setAttribute('id', name);
             element.setAttribute('class', name);
             return element;
         };
-
         const clusterGroup = createGroup('clusters');
         const edgePathGroup = createGroup('edge-paths');
         const edgePathHitTestGroup = createGroup('edge-paths-hit-test');
         const edgeLabelGroup = createGroup('edge-labels');
         const nodeGroup = createGroup('nodes');
-
         const edgePathGroupDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
         edgePathGroup.appendChild(edgePathGroupDefs);
         const marker = (id) => {
@@ -187,18 +183,23 @@ grapher.Graph = class {
                 clusterGroup.appendChild(node.element);
             }
         }
-
         this._focusable.clear();
         this._focused = null;
         for (const edge of this.edges.values()) {
             edge.label.build(document, edgePathGroup, edgePathHitTestGroup, edgeLabelGroup);
-            this._focusable.set(edge.label.hitTest, edge.label);
+            if (edge.label.hitTest) {
+                this._focusable.set(edge.label.hitTest, edge.label);
+            }
         }
+        const tunnelGroup = createGroup('tunnel-edges');
         origin.appendChild(clusterGroup);
         origin.appendChild(edgePathGroup);
         origin.appendChild(edgePathHitTestGroup);
         origin.appendChild(edgeLabelGroup);
         origin.appendChild(nodeGroup);
+        origin.appendChild(tunnelGroup);
+        this._tunnelGroup = tunnelGroup;
+        this._document = document;
         for (const edge of this.edges.values()) {
             if (edge.label.labelElement) {
                 const label = edge.label;
@@ -214,9 +215,8 @@ grapher.Graph = class {
             const entry = this.node(key);
             if (this.children(key).length === 0) {
                 const node = entry.label;
-                /* eslint-disable no-await-in-loop */
+                // eslint-disable-next-line no-await-in-loop
                 await node.measure();
-                /* eslint-enable no-await-in-loop */
             }
         }
     }
@@ -293,12 +293,6 @@ grapher.Graph = class {
             maxX = Math.max(maxX, node.x + hw);
             maxY = Math.max(maxY, node.y + hh);
         }
-        if (isFinite(minX)) {
-            this.width = maxX - minX;
-            this.height = maxY - minY;
-            this.originX = minX;
-            this.originY = minY;
-        }
         for (const edge of edges) {
             const label = this.edge(edge.v, edge.w).label;
             label.points = edge.points;
@@ -306,6 +300,28 @@ grapher.Graph = class {
                 label.x = edge.x;
                 label.y = edge.y;
             }
+            if (label.points) {
+                for (const point of label.points) {
+                    minX = Math.min(minX, point.x);
+                    minY = Math.min(minY, point.y);
+                    maxX = Math.max(maxX, point.x);
+                    maxY = Math.max(maxY, point.y);
+                }
+            }
+            if (label.x !== undefined && label.width && label.height) {
+                const hw = label.width / 2;
+                const hh = label.height / 2;
+                minX = Math.min(minX, label.x - hw);
+                minY = Math.min(minY, label.y - hh);
+                maxX = Math.max(maxX, label.x + hw);
+                maxY = Math.max(maxY, label.y + hh);
+            }
+        }
+        if (isFinite(minX)) {
+            this.width = maxX - minX;
+            this.height = maxY - minY;
+            this.originX = minX;
+            this.originY = minY;
         }
         for (const key of this.nodes.keys()) {
             const entry = this.node(key);
@@ -345,24 +361,24 @@ grapher.Graph = class {
 grapher.Node = class {
 
     constructor() {
-        this._blocks = [];
+        this.blocks = [];
     }
 
     header() {
         const block = new grapher.Node.Header();
-        this._blocks.push(block);
+        this.blocks.push(block);
         return block;
     }
 
     list() {
         const block = new grapher.ArgumentList();
-        this._blocks.push(block);
+        this.blocks.push(block);
         return block;
     }
 
     canvas() {
         const block = new grapher.Node.Canvas();
-        this._blocks.push(block);
+        this.blocks.push(block);
         return block;
     }
 
@@ -376,10 +392,10 @@ grapher.Node = class {
         parent.appendChild(this.element);
         this.border = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         this.border.setAttribute('class', 'node node-border');
-        for (let i = 0; i < this._blocks.length; i++) {
-            const block = this._blocks[i];
+        for (let i = 0; i < this.blocks.length; i++) {
+            const block = this.blocks[i];
             block.first = i === 0;
-            block.last = i === this._blocks.length - 1;
+            block.last = i === this.blocks.length - 1;
             block.build(document, this.element);
         }
         this.element.appendChild(this.border);
@@ -387,20 +403,20 @@ grapher.Node = class {
 
     async measure() {
         this.height = 0;
-        for (const block of this._blocks) {
+        for (const block of this.blocks) {
             // eslint-disable-next-line no-await-in-loop
             await block.measure();
             this.height += block.height;
         }
-        this.width = Math.max(...this._blocks.map((block) => block.width));
-        for (const block of this._blocks) {
+        this.width = Math.max(...this.blocks.map((block) => block.width));
+        for (const block of this.blocks) {
             block.width = this.width;
         }
     }
 
     async layout() {
         let y = 0;
-        for (const block of this._blocks) {
+        for (const block of this.blocks) {
             block.x = 0;
             block.y = y;
             block.width = this.width;
@@ -411,7 +427,7 @@ grapher.Node = class {
     }
 
     update() {
-        for (const block of this._blocks) {
+        for (const block of this.blocks) {
             block.update();
         }
         this.border.setAttribute('d', grapher.Node.roundedRect(0, 0, this.width, this.height, true, true, true, true));
@@ -449,8 +465,8 @@ grapher.Node.Header = class {
         this._entries = [];
     }
 
-    add(id, classList, content, tooltip, handler) {
-        const entry = new grapher.Node.Header.Entry(id, classList, content, tooltip, handler);
+    add(id, classes) {
+        const entry = new grapher.Node.Header.Entry(id, classes);
         this._entries.push(entry);
         return entry;
     }
@@ -506,17 +522,8 @@ grapher.Node.Header = class {
             const r3 = i === this._entries.length - 1 && this.last;
             const r4 = i === 0 && this.last;
             entry.path.setAttribute('d', grapher.Node.roundedRect(0, 0, entry.width, entry.height, r1, r2, r3, r4));
-            entry.text.setAttribute('x', 6);
+            entry.text.setAttribute('x', entry.tx || 6);
             entry.text.setAttribute('y', entry.ty);
-        }
-        for (let i = 1; i < this._entries.length; i++) {
-            const entry = this._entries[i];
-            const line = entry.line;
-            line.setAttribute('class', 'node');
-            line.setAttribute('x1', entry.x);
-            line.setAttribute('x2', entry.x);
-            line.setAttribute('y1', this.y);
-            line.setAttribute('y2', this.y + this.height);
         }
         if (this.line) {
             this.line.setAttribute('class', 'node');
@@ -530,12 +537,9 @@ grapher.Node.Header = class {
 
 grapher.Node.Header.Entry = class {
 
-    constructor(id, classList, content, tooltip, handler) {
+    constructor(id, classes) {
         this.id = id;
-        this.classList = classList;
-        this.content = content;
-        this.tooltip = tooltip;
-        this.handler = handler;
+        this.classes = classes;
         this._events = {};
     }
 
@@ -560,8 +564,8 @@ grapher.Node.Header.Entry = class {
         this.element.appendChild(this.path);
         this.element.appendChild(this.text);
         const classList = ['node-item'];
-        if (this.classList) {
-            classList.push(...this.classList);
+        if (this.classes) {
+            classList.push(...this.classes);
         }
         this.element.setAttribute('class', classList.join(' '));
         if (this.id) {
@@ -583,7 +587,7 @@ grapher.Node.Header.Entry = class {
 
     measure() {
         const yPadding = 4;
-        const xPadding = 7;
+        const xPadding = this.padding || 7;
         const boundingBox = this.text.getBBox();
         this.width = boundingBox.width + xPadding + xPadding;
         this.height = boundingBox.height + yPadding + yPadding;
@@ -651,9 +655,8 @@ grapher.ArgumentList = class {
         this.height = 3;
         for (let i = 0; i < this._items.length; i++) {
             const item = this._items[i];
-            /* eslint-disable no-await-in-loop */
+            // eslint-disable-next-line no-await-in-loop
             await item.measure();
-            /* eslint-enable no-await-in-loop */
             this.height += item.height;
             this.width = Math.max(this.width, item.width);
             if (item.type === 'node' || item.type === 'node[]') {
@@ -674,9 +677,8 @@ grapher.ArgumentList = class {
             item.x = this.x;
             item.y = y;
             item.width = this.width;
-            /* eslint-disable no-await-in-loop */
+            // eslint-disable-next-line no-await-in-loop
             await item.layout();
-            /* eslint-enable no-await-in-loop */
             y += item.height;
         }
     }
@@ -788,9 +790,8 @@ grapher.Argument = class {
             this.height += node.height + yPadding + yPadding + yPadding + yPadding;
         } else if (this.type === 'node[]') {
             for (const node of this.content) {
-                /* eslint-disable no-await-in-loop */
+                // eslint-disable-next-line no-await-in-loop
                 await node.measure();
-                /* eslint-enable no-await-in-loop */
                 this.width = Math.max(150, this.width, node.width + (2 * xPadding));
                 this.height += node.height + yPadding + yPadding + yPadding + yPadding;
             }
@@ -875,6 +876,10 @@ grapher.Edge = class {
     }
 
     build(document, edgePathGroupElement, edgePathHitTestGroupElement, edgeLabelGroupElement) {
+        if (this._tunnel) {
+            // Tunnel edges are rendered separately
+            return;
+        }
         const createElement = (name) => {
             return document.createElementNS('http://www.w3.org/2000/svg', name);
         };
@@ -904,6 +909,9 @@ grapher.Edge = class {
     }
 
     update() {
+        if (this._tunnel) {
+            return;
+        }
         const intersectRect = (node, point) => {
             const x = node.x;
             const y = node.y;

@@ -12,53 +12,71 @@ gguf.ModelFactory = class {
     }
 
     async open(context) {
-        const metadata = await context.metadata('gguf-metadata.json');
+        const metadata = await context.asset('gguf-metadata.json');
+        const entries = JSON.parse(metadata);
+        const schemas = new Map(entries.map((entry) => [entry.name, entry]));
         const target = context.value;
         await target.read();
-        return new gguf.Model(metadata, target);
+        return new gguf.Model(schemas, target);
     }
 };
 
 gguf.Model = class {
 
-    constructor(metadata, target) {
+    constructor(schemas, target) {
         this.format = target.format;
         this.metadata = [];
-        const extra = new Map();
+        const metadata = new Map();
         let architecture = '?';
-        for (const [name, value] of target.metadata) {
+        for (const [name, entry] of target.metadata) {
             switch (name) {
-                case 'general.name': this.name = value; break;
-                case 'general.architecture': architecture = value; break;
-                case 'general.description': this.description = value; break;
-                case 'general.author': this.metadata.push(new gguf.Argument('author', value)); break;
-                case 'general.license': this.metadata.push(new gguf.Argument('license', value)); break;
-                case 'general.file_type':
-                case 'general.quantization_version':
+                case 'general.name': {
+                    this.name = entry.value;
                     break;
-                default:
-                    extra.set(name, value);
+                }
+                case 'general.architecture': {
+                    architecture = entry.value;
                     break;
+                }
+                case 'general.description': {
+                    this.description = entry.value;
+                    break;
+                }
+                default: {
+                    const path = name.split('.');
+                    if (path[0] === 'general') {
+                        const argument = new gguf.Argument(path.pop(), entry.value, entry.type);
+                        this.metadata.push(argument);
+                    } else {
+                        metadata.set(entry.name, entry);
+                    }
+                    break;
+                }
             }
         }
         const tokenizer = { type: 'tokenizer', metadata: new Map(), layers: [] };
         const graph = {};
         graph.type = architecture;
-        graph.attributes = [];
-        for (const [name, value] of extra) {
-            if (name.startsWith('tokenizer.')) {
-                const match = name.match(/^(.*)\.(.*?)$/);
+        graph.metadata = [];
+        for (const [name, entry] of metadata) {
+            const path = name.split('.');
+            if (path[0] === 'tokenizer') {
+                const match = entry.name.match(/^(.*)\.(.*?)$/);
                 if (match) {
                     const [, param] = match.slice(1);
-                    tokenizer.metadata.set(param, value);
+                    tokenizer.metadata.set(param, entry);
                 }
-            } else if (architecture !== '?' && name.startsWith(`${architecture}.`)) {
-                graph.attributes.push(new gguf.Argument(name, value));
+            } else if (architecture !== '?' && path[0] === architecture) {
+                const name = path.slice(1).join('.');
+                const argument = new gguf.Argument(name, entry.value, entry.type);
+                graph.metadata.push(argument);
             } else {
-                this.metadata.push(new gguf.Argument(name, value));
+                const argument = new gguf.Argument(entry.name, entry.value, entry.type);
+                this.metadata.push(argument);
             }
         }
-        const context = new gguf.Context(metadata, target, extra, architecture);
+        const schema = schemas.get(architecture);
+        const context = new gguf.Context(schema, target, metadata, architecture);
         graph.layers = context.build();
         if (tokenizer.metadata.size > 0) {
             graph.layers = graph.layers || [];
@@ -80,9 +98,12 @@ gguf.Graph = class {
         this.nodes = [];
         this.inputs = [];
         this.outputs = [];
-        this.attributes = graph.attributes || [];
+        this.metadata = graph.metadata || [];
         let valueIndex = 0;
         let prevValue = null;
+        let ropeFreqsValue = null;
+        let perLayerInputValue = null;
+        const perLayerOutputs = {};
         const newValue = () => new gguf.Value(`v${valueIndex++}`);
         const addNode = (entry, inputValues, outputValue) => {
             const node = new gguf.Node(entry);
@@ -97,7 +118,12 @@ gguf.Graph = class {
         const addOp = (type, inputValues, outputValue) => {
             addNode({ name: '', type, weights: new Map(), metadata: new Map(), layers: [] }, inputValues, outputValue);
         };
+        const head = new Map();
         for (const layer of graph.layers) {
+            if (graph.type === 'clef' && /^(decision\.|dec\.|token_types$|output$)/.test(layer.name || '')) {
+                head.set(layer.name, layer);
+                continue;
+            }
             if (Array.isArray(layer.layers) && layer.layers.length > 0) {
                 const map = new Map();
                 for (const item of layer.layers) {
@@ -111,44 +137,169 @@ gguf.Graph = class {
                     return get(name);
                 };
                 const hasMoe = has('ffn_gate_inp');
-                const hasFfn = has('ffn_up') || hasMoe;
-                const buildLinearFfn = (input, gateKey, upKey, downKey) => {
+                const hasFusedExps = has('ffn_gate_up_exps') && has('ffn_down_exps');
+                const hasFusedFfn = has('ffn_gate_up') && has('ffn_down');
+                const hasFfn = has('ffn_up') || hasFusedFfn || hasMoe;
+                const buildLinearFfn = (input, gateKey, upKey, downKey, route = null) => {
+                    if (!has(downKey)) {
+                        return input;
+                    }
                     const inputs = [input];
                     if (has(gateKey)) {
                         const g = newValue();
-                        addNode(use(gateKey), [input], g);
+                        addNode(use(gateKey), route ? [input, route] : [input], g);
                         inputs.push(g);
                     }
-                    const u = newValue();
-                    addNode(use(upKey), [input], u);
-                    inputs.push(u);
+                    if (has(upKey)) {
+                        const u = newValue();
+                        addNode(use(upKey), route ? [input, route] : [input], u);
+                        inputs.push(u);
+                    }
                     const d = newValue();
-                    addNode(use(downKey), inputs, d);
+                    addNode(use(downKey), route ? [...inputs, route] : inputs, d);
                     return d;
+                };
+                const buildFusedFfn = (input, gateUpKey, downKey, route = null) => {
+                    const gu = newValue();
+                    addNode(use(gateUpKey), route ? [input, route] : [input], gu);
+                    const d = newValue();
+                    addNode(use(downKey), route ? [gu, route] : [gu], d);
+                    return d;
+                };
+                const applyComponent = (groupName, value) => {
+                    if (!has(groupName)) {
+                        return value;
+                    }
+                    const out = newValue();
+                    addNode(use(groupName), [value], out);
+                    return out;
                 };
                 const buildFfn = (input) => {
                     if (hasMoe) {
-                        const g1 = newValue();
-                        addNode(use('ffn_gate_inp'), [input], g1);
-                        const moeOut = buildLinearFfn(g1, 'ffn_gate_exps', 'ffn_up_exps', 'ffn_down_exps');
+                        const moeInput = applyComponent('ffn_pre_norm_2', input);
+                        let g1 = newValue();
+                        addNode(use('ffn_gate_inp'), [moeInput], g1);
+                        // Expert routing bias (deepseek/step/bailing MoE): added to the
+                        // router logits before top-k selection.
+                        // DeepSeek4 selects the vision bias for image tokens.
+                        const biases = ['exp_probs_b', 'exp_probs_b_vl'].filter(has).map(use);
+                        if (biases.length > 0) {
+                            const weights = new Map(biases.flatMap((bias) => Array.from(bias.weights)));
+                            const biased = newValue();
+                            addNode({ ...biases[0], type: 'ADD', weights }, [g1], biased);
+                            g1 = biased;
+                        }
+                        let expertInput = moeInput;
+                        if (has('ffn_latent_down')) {
+                            const latent = newValue();
+                            addNode(use('ffn_latent_down'), [moeInput], latent);
+                            expertInput = latent;
+                        }
+                        const hasLatent = has('ffn_latent_down') || has('ffn_latent_up');
+                        let moeOut = hasFusedExps ?
+                            buildFusedFfn(hasLatent ? expertInput : g1, 'ffn_gate_up_exps', 'ffn_down_exps', hasLatent ? g1 : null) :
+                            buildLinearFfn(hasLatent ? expertInput : g1, 'ffn_gate_exps', 'ffn_up_exps', 'ffn_down_exps', hasLatent ? g1 : null);
+                        moeOut = applyComponent('ffn_latent_norm', moeOut);
+                        if (has('ffn_latent_up')) {
+                            const latent = newValue();
+                            addNode(use('ffn_latent_up'), [moeOut], latent);
+                            moeOut = latent;
+                        }
+                        moeOut = applyComponent('ffn_post_norm_2', moeOut);
                         if (has('ffn_up_shexp')) {
                             const sharedOut = buildLinearFfn(input, 'ffn_gate_shexp', 'ffn_up_shexp', 'ffn_down_shexp');
                             const sum = newValue();
                             addOp('ADD', [moeOut, sharedOut], sum);
                             return sum;
                         }
+                        if (hasFusedExps && has('ffn_up')) {
+                            let sharedOut = buildLinearFfn(input, 'ffn_gate', 'ffn_up', 'ffn_down');
+                            sharedOut = applyComponent('ffn_post_norm_1', sharedOut);
+                            const sum = newValue();
+                            addOp('ADD', [moeOut, sharedOut], sum);
+                            return sum;
+                        }
                         return moeOut;
                     }
-                    return buildLinearFfn(input, 'ffn_gate', 'ffn_up', 'ffn_down');
+                    return hasFusedFfn ?
+                        buildFusedFfn(input, 'ffn_gate_up', 'ffn_down') :
+                        buildLinearFfn(input, 'ffn_gate', 'ffn_up', 'ffn_down');
                 };
-                if (has('attn_norm') && has('attention') && !has('ffn_norm') && !has('attn_post_norm') && hasFfn) {
+                const applyLayerOutScale = (value) => {
+                    if (!has('layer_out_scale')) {
+                        return value;
+                    }
+                    const out = newValue();
+                    addNode(use('layer_out_scale'), [value], out);
+                    return out;
+                };
+                const ropeFreqs = ropeFreqsValue;
+                const buildAttention = (input, output) => {
+                    const inputs = ropeFreqs ? [input, ropeFreqs] : [input];
+                    addNode(use('attention'), inputs, output);
+                };
+                // Multi-token prediction head (nextn/MTP, e.g. cohere2moe.cpp:330-355):
+                //   e_norm  = norm(nextn.embed_tokens, nextn.enorm)
+                //   h_norm  = norm(hidden_state, nextn.hnorm)
+                //   cur     = nextn.eh_proj * concat(e_norm, h_norm)
+                // The projection result is the input to this block.
+                if (has('nextn.eh_proj')) {
+                    const inputs = [];
+                    if (has('nextn.enorm')) {
+                        let embd = prevValue;
+                        if (has('nextn.embed_tokens')) {
+                            embd = newValue();
+                            addNode(use('nextn.embed_tokens'), [], embd);
+                        }
+                        const out = newValue();
+                        addNode(use('nextn.enorm'), embd ? [embd] : [], out);
+                        inputs.push(out);
+                    }
+                    if (has('nextn.hnorm')) {
+                        const out = newValue();
+                        addNode(use('nextn.hnorm'), prevValue ? [prevValue] : [], out);
+                        inputs.push(out);
+                    }
+                    const concat = newValue();
+                    addOp('CONCAT', inputs, concat);
+                    const out = newValue();
+                    addNode(use('nextn.eh_proj'), [concat], out);
+                    prevValue = out;
+                }
+                if (graph.type === 'qwen4exp' && has('hc_attn') && has('hc_ffn')) {
+                    let residual = prevValue || newValue();
+                    if (has('ple')) {
+                        const out = newValue();
+                        const inputs = perLayerInputValue ? [residual, perLayerInputValue] : [residual];
+                        addNode(use('ple'), inputs, out);
+                        residual = out;
+                    }
+                    const tokenInput = newValue();
+                    addNode(use('hc_attn'), [residual], tokenInput);
+                    let tokenOutput = tokenInput;
+                    for (const name of ['attention', 'ssm']) {
+                        if (has(name)) {
+                            tokenOutput = newValue();
+                            addNode(use(name), [tokenInput], tokenOutput);
+                            break;
+                        }
+                    }
+                    const tokenResidual = newValue();
+                    addOp('HYPER_CONNECTION', [residual, tokenOutput], tokenResidual);
+                    const ffnInput = newValue();
+                    addNode(use('hc_ffn'), [tokenResidual], ffnInput);
+                    const ffnOutput = buildFfn(ffnInput);
+                    const output = newValue();
+                    addOp('HYPER_CONNECTION', [tokenResidual, ffnOutput], output);
+                    prevValue = output;
+                } else if (has('attn_norm') && has('attention') && !has('ffn_norm') && !has('attn_post_norm') && hasFfn) {
                     // Parallel attention + FFN (phi-2, falcon)
                     const inp = prevValue || newValue();
                     const normOut = newValue();
                     const attnOut = newValue();
                     const out = newValue();
                     addNode(use('attn_norm'), [inp], normOut);
-                    addNode(use('attention'), [normOut], attnOut);
+                    buildAttention(normOut, attnOut);
                     const ffnOut = buildFfn(normOut);
                     addOp('ADD', [attnOut, ffnOut, inp], out);
                     prevValue = out;
@@ -159,7 +310,7 @@ gguf.Graph = class {
                     const n1 = newValue();
                     addNode(use('attn_norm'), [cur], n1);
                     const a1 = newValue();
-                    addNode(use('attention'), [n1], a1);
+                    buildAttention(n1, a1);
                     const r1 = newValue();
                     addOp('ADD', [a1, cur], r1);
                     cur = r1;
@@ -176,14 +327,21 @@ gguf.Graph = class {
                     const r3 = newValue();
                     addOp('ADD', [f1, cur], r3);
                     prevValue = r3;
-                } else if (has('attn_norm') && has('attention') && has('ffn_norm') && hasFfn) {
-                    // Pre-norm transformer (llama, qwen, gemma, etc.)
+                } else if (has('attention') && has('ffn_norm') && hasFfn) {
+                    // Pre-norm transformer (llama, qwen, gemma, etc.), the first
+                    // modern-bert block has no attn_norm
                     const inp = prevValue || newValue();
                     let cur = inp;
-                    const n1 = newValue();
-                    addNode(use('attn_norm'), [cur], n1);
-                    const a1 = newValue();
-                    addNode(use('attention'), [n1], a1);
+                    const attnInput = applyComponent('attn_res_score', cur);
+                    let n1 = attnInput;
+                    if (has('attn_norm')) {
+                        n1 = newValue();
+                        addNode(use('attn_norm'), [attnInput], n1);
+                    }
+                    let a1 = newValue();
+                    buildAttention(n1, a1);
+                    a1 = applyComponent('attn_output', a1);
+                    const attnResidual = get('attn_norm')?.residual === 'normalized' ? n1 : cur;
                     let preAdd1 = a1;
                     if (has('ssm')) {
                         const s1 = newValue();
@@ -198,10 +356,12 @@ gguf.Graph = class {
                         preAdd1 = pn;
                     }
                     const r1 = newValue();
-                    addOp('ADD', [preAdd1, cur], r1);
+                    addOp('ADD', [preAdd1, attnResidual], r1);
                     cur = r1;
+                    const ffnInput = applyComponent('ffn_res_score', cur);
                     const n2 = newValue();
-                    addNode(use('ffn_norm'), [cur], n2);
+                    addNode(use('ffn_norm'), [ffnInput], n2);
+                    const ffnResidual = get('ffn_norm').residual === 'normalized' ? n2 : cur;
                     const f1 = buildFfn(n2);
                     let preAdd2 = f1;
                     if (has('ffn_post_norm')) {
@@ -210,13 +370,33 @@ gguf.Graph = class {
                         preAdd2 = pn;
                     }
                     const r2 = newValue();
-                    addOp('ADD', [preAdd2, cur], r2);
-                    prevValue = r2;
+                    addOp('ADD', [preAdd2, ffnResidual], r2);
+                    let final = r2;
+                    if (has('inp_gate') && has('proj') && has('post_norm')) {
+                        const peIn = final;
+                        const g = newValue();
+                        addNode(use('inp_gate'), [peIn], g);
+                        const gAct = newValue();
+                        addOp('GELU', [g], gAct);
+                        let gated = gAct;
+                        if (perLayerInputValue) {
+                            gated = newValue();
+                            addOp('MUL', [gAct, perLayerInputValue], gated);
+                        }
+                        const p = newValue();
+                        addNode(use('proj'), [gated], p);
+                        const pn = newValue();
+                        addNode(use('post_norm'), [p], pn);
+                        const r3 = newValue();
+                        addOp('ADD', [pn, peIn], r3);
+                        final = r3;
+                    }
+                    prevValue = applyLayerOutScale(final);
                 } else if (has('attention') && (has('attn_output_norm') || has('layer_output_norm'))) {
                     // Post-norm (BERT)
                     const inp = prevValue || newValue();
                     const a1 = newValue();
-                    addNode(use('attention'), [inp], a1);
+                    buildAttention(inp, a1);
                     const r1 = newValue();
                     addOp('ADD', [a1, inp], r1);
                     let cur = r1;
@@ -238,13 +418,32 @@ gguf.Graph = class {
                         cur = n2;
                     }
                     prevValue = cur;
-                } else if (has('attn_norm') && has('ssm') && hasFfn) {
-                    // SSM + FFN (hybrid SSM-variant block: jamba, granitehybrid, etc.)
+                } else if (has('attn_norm') && has('attention') && !hasFfn) {
+                    // Attention-only residual block (Nemotron-H and similar hybrids).
                     const inp = prevValue || newValue();
                     const n1 = newValue();
                     addNode(use('attn_norm'), [inp], n1);
-                    const s1 = newValue();
+                    const a1 = newValue();
+                    buildAttention(n1, a1);
+                    let preAdd = a1;
+                    if (has('attn_post_norm')) {
+                        const pn = newValue();
+                        addNode(use('attn_post_norm'), [a1], pn);
+                        preAdd = pn;
+                    }
+                    const out = newValue();
+                    addOp('ADD', [preAdd, inp], out);
+                    prevValue = out;
+                } else if (has('attn_norm') && has('ssm') && hasFfn) {
+                    // SSM + FFN (hybrid SSM-variant block: jamba, granitehybrid, etc.)
+                    const inp = prevValue || newValue();
+                    const attnInput = applyComponent('attn_res_score', inp);
+                    const n1 = newValue();
+                    addNode(use('attn_norm'), [attnInput], n1);
+                    let s1 = newValue();
                     addNode(use('ssm'), [n1], s1);
+                    s1 = applyComponent('attn_output', s1);
+                    const attnResidual = get('attn_norm').residual === 'normalized' ? n1 : inp;
                     let preAdd1 = s1;
                     if (has('attn_post_norm')) {
                         const pn = newValue();
@@ -252,12 +451,16 @@ gguf.Graph = class {
                         preAdd1 = pn;
                     }
                     const r1 = newValue();
-                    addOp('ADD', [preAdd1, inp], r1);
-                    let cur = r1;
+                    addOp('ADD', [preAdd1, attnResidual], r1);
+                    let cur = applyComponent('ffn_res_score', r1);
+                    let ffnResidual = r1;
                     if (has('ffn_norm')) {
                         const n2 = newValue();
                         addNode(use('ffn_norm'), [cur], n2);
                         cur = n2;
+                        if (get('ffn_norm').residual === 'normalized') {
+                            ffnResidual = n2;
+                        }
                     }
                     const f1 = buildFfn(cur);
                     let preAdd2 = f1;
@@ -267,7 +470,7 @@ gguf.Graph = class {
                         preAdd2 = pn;
                     }
                     const r2 = newValue();
-                    addOp('ADD', [preAdd2, r1], r2);
+                    addOp('ADD', [preAdd2, ffnResidual], r2);
                     prevValue = r2;
                 } else if (has('attn_norm') && has('ssm')) {
                     // SSM (Mamba)
@@ -279,6 +482,21 @@ gguf.Graph = class {
                     const r1 = newValue();
                     addOp('ADD', [s1, inp], r1);
                     prevValue = r1;
+                } else if (has('attn_norm') && !has('attention') && !has('cross_attention') && !has('ssm') && hasFfn) {
+                    // FFN-only residual block (Nemotron-H and similar hybrids).
+                    const inp = prevValue || newValue();
+                    const n1 = newValue();
+                    addNode(use('attn_norm'), [inp], n1);
+                    const f1 = buildFfn(n1);
+                    let preAdd = f1;
+                    if (has('ffn_post_norm')) {
+                        const pn = newValue();
+                        addNode(use('ffn_post_norm'), [f1], pn);
+                        preAdd = pn;
+                    }
+                    const out = newValue();
+                    addOp('ADD', [preAdd, inp], out);
+                    prevValue = out;
                 } else if (has('attn_norm') && has('time_mix') && has('channel_mix')) {
                     // RWKV
                     const inp = prevValue || newValue();
@@ -307,7 +525,7 @@ gguf.Graph = class {
                     const n1 = newValue();
                     addNode(use('attn_norm'), [inp], n1);
                     const a1 = newValue();
-                    addNode(use('attention'), [n1], a1);
+                    buildAttention(n1, a1);
                     let preAdd1 = a1;
                     if (has('attn_post_norm')) {
                         const pn = newValue();
@@ -317,27 +535,66 @@ gguf.Graph = class {
                     const r1 = newValue();
                     addOp('ADD', [preAdd1, inp], r1);
                     const f1 = buildFfn(r1);
+                    let preAdd2 = f1;
+                    if (has('ffn_post_norm')) {
+                        const pn = newValue();
+                        addNode(use('ffn_post_norm'), [f1], pn);
+                        preAdd2 = pn;
+                    }
                     const r2 = newValue();
-                    addOp('ADD', [f1, r1], r2);
+                    addOp('ADD', [preAdd2, r1], r2);
                     prevValue = r2;
                 } else {
-                    // Fallback: linear chain
+                    // Fallback: unrecognized block shape, render components without
+                    // fabricating sequential data-flow edges.
                     for (const item of layer.layers) {
-                        const node = new gguf.Node(item);
-                        if (prevValue) {
-                            node.inputs.unshift(new gguf.Argument('input', [prevValue]));
-                        }
-                        const out = newValue();
-                        node.outputs.push(new gguf.Argument('output', [out]));
-                        prevValue = out;
-                        this.nodes.push(node);
+                        this.nodes.push(new gguf.Node(item));
                     }
                     continue;
+                }
+                // MTP draft head output: norm then projection to vocabulary logits.
+                for (const name of ['nextn.shared_head_norm', 'nextn.shared_head_head']) {
+                    if (has(name)) {
+                        const out = newValue();
+                        addNode(use(name), prevValue ? [prevValue] : [], out);
+                        prevValue = out;
+                    }
                 }
                 for (const item of layer.layers) {
                     if (!used.has(item.name)) {
                         this.nodes.push(new gguf.Node(item));
                     }
+                }
+            } else if (layer.type === 'ROPE_FREQS') {
+                const node = new gguf.Node(layer);
+                ropeFreqsValue = newValue();
+                node.outputs.push(new gguf.Argument('output', [ropeFreqsValue]));
+                this.nodes.push(node);
+            } else if (layer.name === 'per_layer_token_embd' || layer.name === 'per_layer_model_proj' || layer.name === 'per_layer_proj_norm') {
+                // Gemma 3n / 4 per-layer-embedding precomputation (gemma4.cpp:431-451):
+                //   per_layer_proj  = per_layer_model_proj * token_embd_output
+                //   per_layer_proj  = norm(per_layer_proj, per_layer_proj_norm)
+                //   inp_per_layer   = per_layer_proj + per_layer_token_embd
+                // The result fans out into each block's per-layer-embedding gating mul.
+                const node = new gguf.Node(layer);
+                const out = newValue();
+                if (layer.name === 'per_layer_model_proj' && prevValue) {
+                    node.inputs.unshift(new gguf.Argument('input', [prevValue]));
+                } else if (layer.name === 'per_layer_proj_norm' && perLayerOutputs.per_layer_model_proj) {
+                    node.inputs.unshift(new gguf.Argument('input', [perLayerOutputs.per_layer_model_proj]));
+                }
+                node.outputs.push(new gguf.Argument('output', [out]));
+                this.nodes.push(node);
+                perLayerOutputs[layer.name] = out;
+                if (graph.type === 'qwen4exp' && layer.name === 'per_layer_token_embd') {
+                    perLayerInputValue = out;
+                }
+                if (perLayerOutputs.per_layer_token_embd && perLayerOutputs.per_layer_proj_norm && !perLayerInputValue) {
+                    perLayerInputValue = newValue();
+                    addOp('ADD', [perLayerOutputs.per_layer_proj_norm, perLayerOutputs.per_layer_token_embd], perLayerInputValue);
+                } else if (layer.name === 'per_layer_proj_norm' && !perLayerOutputs.per_layer_token_embd) {
+                    // gemma-embedding2 has no per-layer token embeddings
+                    perLayerInputValue = out;
                 }
             } else {
                 const node = new gguf.Node(layer);
@@ -352,14 +609,62 @@ gguf.Graph = class {
                 this.nodes.push(node);
             }
         }
+        if (head.size > 0) {
+            // Clef decision head (clef.cpp build_head): option and question
+            // vectors read the prompt through cross-attention, then are scored.
+            const apply = (layer, inputs) => {
+                const output = newValue();
+                addNode(layer, inputs, output);
+                return output;
+            };
+            const add = (inputs) => {
+                const output = newValue();
+                addOp('ADD', inputs, output);
+                return output;
+            };
+            const block = (layer, input, memory) => {
+                const get = (name) => layer.layers.find((item) => item.name === name);
+                let cur = input;
+                if (get('attention')) {
+                    cur = add([cur, apply(get('attention'), [apply(get('attn_norm'), [cur])])]);
+                }
+                cur = add([cur, apply(get('cross_attention'), [apply(get('cross_attn_norm'), [cur]), memory])]);
+                return add([cur, apply(get('ffn_down'), [apply(get('ffn_up'), [apply(get('ffn_norm'), [cur])])])]);
+            };
+            const blocks = Array.from(head.values()).filter((layer) => layer.name.startsWith('dec.blk.'));
+            const hidden = apply(head.get('decision.hidden_norm'), [prevValue]);
+            const memory = apply(head.get('decision.proj_memory'), [hidden]);
+            const lexical = apply(head.get('output'), []);
+            let options = add([
+                apply(head.get('decision.proj_option_context'), [hidden]),
+                apply(head.get('decision.proj_option_lexical'), [lexical]),
+                apply(head.get('decision.proj_option_question'), [hidden])
+            ]);
+            for (const layer of blocks.filter((layer) => !layer.layers.some((item) => item.name === 'attention'))) {
+                options = block(layer, options, memory);
+            }
+            let fields = add([
+                apply(head.get('decision.proj_question'), [hidden]),
+                apply(head.get('decision.option_summary_norm'), [options]),
+                apply(head.get('decision.proj_global'), [hidden]),
+                apply(head.get('token_types'), [])
+            ]);
+            for (const layer of blocks.filter((layer) => layer.layers.some((item) => item.name === 'attention'))) {
+                fields = block(layer, fields, memory);
+            }
+            const features = newValue();
+            addOp('CONCAT', [apply(head.get('decision.field_norm'), [fields]), apply(head.get('decision.option_norm'), [options])], features);
+            prevValue = apply(head.get('decision.scales'), [apply(head.get('decision.scorer_out'), [apply(head.get('decision.scorer'), [features])])]);
+        }
     }
 };
 
 gguf.Argument = class {
 
-    constructor(name, value) {
+    constructor(name, value, type = null) {
         this.name = name;
         this.value = value;
+        this.type = type;
     }
 };
 
@@ -390,8 +695,8 @@ gguf.Node = class {
             }
         }
         if (layer.metadata) {
-            for (const [name, value] of layer.metadata) {
-                const attribute = new gguf.Argument(name, value);
+            for (const [name, entry] of layer.metadata) {
+                const attribute = new gguf.Argument(name, entry.value, entry.type);
                 this.attributes.push(attribute);
             }
         }
@@ -426,13 +731,10 @@ gguf.Tensor = class {
     constructor(tensor) {
         const shape = new gguf.TensorShape(tensor.ne);
         this.type = new gguf.TensorType(tensor.dtype, shape);
-        if (tensor.type !== gguf.QuantizationType.F32 && tensor.type !== gguf.QuantizationType.F16) {
-            this.quantization = {
-                type: gguf.Utility.enum(gguf.QuantizationType, tensor.type).toLowerCase()
-            };
-        }
-        if (tensor.dtype === 'float32' || tensor.dtype === 'float16' ||
-            tensor.dtype === 'int8' || tensor.dtype === 'int16' || tensor.dtype === 'int32') {
+        const type = gguf.QuantizationType[tensor.type];
+        if (type.block_size > 1) {
+            this.quantization = { type: type.name.toLowerCase() };
+        } else {
             this.encoding = '<';
             this._data = tensor.data;
         }
@@ -462,50 +764,6 @@ gguf.Reader = class {
 
     constructor(context) {
         this.context = context;
-        const QK_K = 256;
-        // https://github.com/ggml-org/llama.cpp/blob/master/gguf-py/gguf/constants.py
-        gguf.Reader.GGML_QUANT_SIZES = gguf.Reader.GGML_QUANT_SIZES || new Map([
-            [gguf.QuantizationType.F32,        [1, 4, 'float32']],
-            [gguf.QuantizationType.F16,        [1, 2, 'float16']],
-            [gguf.QuantizationType.Q4_0,       [32, 2 + 16, 'q4_0']],
-            [gguf.QuantizationType.Q4_1,       [32, 2 + 2 + 16, 'q4_1']],
-            [gguf.QuantizationType.Q4_2,       [16, 2 + 8, 'q4_2']],
-            [gguf.QuantizationType.Q4_3,       [16, 2 + 2 + 8, 'q4_3']],
-            [gguf.QuantizationType.Q5_0,       [32, 2 + 4 + 16, 'q5_0']],
-            [gguf.QuantizationType.Q5_1,       [32, 2 + 2 + 4 + 16, 'q5_1']],
-            [gguf.QuantizationType.Q8_0,       [32, 2 + 32, 'q8_0']],
-            [gguf.QuantizationType.Q8_1,       [32, 4 + 4 + 32, 'q8_1']],
-            [gguf.QuantizationType.Q2_K,       [256, 2 + 2 + Math.floor(QK_K / 16) + Math.floor(QK_K / 4), 'q2_K']],
-            [gguf.QuantizationType.Q3_K,       [256, 2 + Math.floor(QK_K / 4) + Math.floor(QK_K / 8) + 12, 'q3_K']],
-            [gguf.QuantizationType.Q4_K,       [256, 2 + 2 + Math.floor(QK_K / 2) + 12, 'q4_K']],
-            [gguf.QuantizationType.Q5_K,       [256, 2 + 2 + Math.floor(QK_K / 2) + Math.floor(QK_K / 8) + 12, 'q5_K']],
-            [gguf.QuantizationType.Q6_K,       [256, 2 + Math.floor(QK_K / 2) + Math.floor(QK_K / 4) + Math.floor(QK_K / 16), 'q6_K']],
-            [gguf.QuantizationType.Q8_K,       [256, 4 + QK_K + Math.floor(QK_K / 8), 'q8_K']],
-            [gguf.QuantizationType.IQ2_XXS,    [256, 2 + Math.floor(QK_K / 4), 'iq2_xxs']],
-            [gguf.QuantizationType.IQ2_XS,     [256, 2 + Math.floor(QK_K / 4) + Math.floor(QK_K / 32), 'iq2_xs']],
-            [gguf.QuantizationType.IQ3_XXS,    [256, 2 + Math.floor(QK_K / 4) + Math.floor(QK_K / 8), 'iq3_xxs']],
-            [gguf.QuantizationType.IQ1_S,      [256, 2 + Math.floor(QK_K / 8) + Math.floor(QK_K / 16), 'iq1_s']],
-            [gguf.QuantizationType.IQ4_NL,     [32, 2 + 16, 'iq4_nl']],
-            [gguf.QuantizationType.IQ3_S,      [256, 2 + Math.floor(QK_K / 4) + Math.floor(QK_K / 8) + Math.floor(QK_K / 32) + 4, 'iq3_s']],
-            [gguf.QuantizationType.IQ2_S,      [256, 2 + Math.floor(QK_K / 4) + Math.floor(QK_K / 16), 'iq2_s']],
-            [gguf.QuantizationType.IQ4_XS,     [256, 2 + 2 + Math.floor(QK_K / 2) + Math.floor(QK_K / 64), 'iq4_xs']],
-            [gguf.QuantizationType.I8,         [1, 1, 'int8']],
-            [gguf.QuantizationType.I16,        [1, 2, 'int16']],
-            [gguf.QuantizationType.I32,        [1, 4, 'int32']],
-            [gguf.QuantizationType.I64,        [1, 8, 'int64']],
-            [gguf.QuantizationType.F64,        [1, 8, 'float64']],
-            [gguf.QuantizationType.IQ1_M,      [256, Math.floor(QK_K / 8) + Math.floor(QK_K / 16)  + Math.floor(QK_K / 32), 'iq1_m']],
-            [gguf.QuantizationType.BF16,       [1, 2, 'bfloat16']],
-            [gguf.QuantizationType.Q4_0_4_4,   [32, 2 + 16, 'q4_0_4_4']],
-            [gguf.QuantizationType.Q4_0_4_8,   [32, 2 + 16, 'q4_0_4_8']],
-            [gguf.QuantizationType.Q4_0_8_8,   [32, 2 + 16, 'q4_0_8_8']],
-            [gguf.QuantizationType.TQ1_0,      [256, 2 + 4 * 13, 'tq1_0']],
-            [gguf.QuantizationType.TQ2_0,      [256, 2 + 64, 'tq2_0']],
-            [gguf.QuantizationType.IQ4_NL_4_4, [32, 2 + 16, 'iq4_nl_4_4']],
-            [gguf.QuantizationType.IQ4_NL_4_8, [32, 2 + 16, 'iq4_nl_4_8']],
-            [gguf.QuantizationType.IQ4_NL_8_8, [32, 2 + 16, 'iq4_nl_8_8']],
-            [gguf.QuantizationType.MXFP4,      [32, 1 + 16, 'mxfp4']]
-        ]);
     }
 
     async read() {
@@ -523,8 +781,8 @@ gguf.Reader = class {
             this.header.n_tensors = reader.uint64().toNumber();
             this.header.n_kv = reader.uint64().toNumber();
             for (let i = 0; i < this.header.n_kv; i++) {
-                const entry = reader.entry();
-                this.metadata.set(entry.name, entry.value);
+                const entry = reader.value();
+                this.metadata.set(entry.name, entry);
             }
             const tensors = this.header.n_tensors;
             if (tensors > 0) {
@@ -538,16 +796,14 @@ gguf.Reader = class {
                 }
                 const offset = reader.position;
                 for (const tensor of this.tensors.values()) {
-                    if (!gguf.Reader.GGML_QUANT_SIZES.has(tensor.type)) {
+                    const type = gguf.QuantizationType[tensor.type];
+                    if (!type) {
                         throw new gguf.Error(`Unsupported tensor quantization type '${tensor.type}'.`);
                     }
-                    const [block_size, type_size, dtype] = gguf.Reader.GGML_QUANT_SIZES.get(tensor.type);
-                    tensor.block_size = block_size;
-                    tensor.type_size = type_size;
-                    tensor.dtype = dtype || '?';
+                    tensor.dtype = type.name;
                     if (offset < reader.length) {
                         const n_elems = tensor.ne.reduce((a, b) => a * b, 1);
-                        const n_bytes = Math.floor((n_elems * type_size) / block_size);
+                        const n_bytes = Math.floor((n_elems * type.type_size) / type.block_size);
                         reader.seek(offset + tensor.offset);
                         tensor.data = reader.stream(n_bytes);
                     }
@@ -563,6 +819,7 @@ gguf.BinaryReader = class {
 
     constructor(reader) {
         this._reader = reader;
+        this._decoder = new TextDecoder('utf-8', { ignoreBOM: true });
     }
 
     get length() {
@@ -625,13 +882,17 @@ gguf.BinaryReader = class {
         return this._reader.float32();
     }
 
+    float64() {
+        return this._reader.float64();
+    }
+
     string() {
         const size = this.uint64().toNumber();
         const buffer = this.read(size);
-        return String.fromCharCode.apply(null, buffer);
+        return this._decoder.decode(buffer);
     }
 
-    value(type) {
+    scalar(type) {
         switch (type) {
             case gguf.Type.UINT8: return this.byte();
             case gguf.Type.INT8: return this.int8();
@@ -642,28 +903,44 @@ gguf.BinaryReader = class {
             case gguf.Type.UINT64: return this.uint64();
             case gguf.Type.INT64: return this.int64();
             case gguf.Type.FLOAT32: return this.float32();
+            case gguf.Type.FLOAT64: return this.float64();
             case gguf.Type.BOOL: return this.byte() !== 0;
             case gguf.Type.STRING: return this.string();
-            case gguf.Type.ARRAY: {
-                const type = this.uint32();
-                const size = this.uint64().toNumber();
-                const value = new Array(size);
-                for (let i = 0; i < size; i++) {
-                    value[i] = this.value(type);
-                }
-                return value;
-            }
-            default: {
-                throw new gguf.Error(`Unsupported GGUF type '${type}'.`);
-            }
+            default: throw new gguf.Error(`Unsupported GGUF type '${type}'.`);
         }
     }
 
-    entry() {
+    type(type) {
+        switch (type) {
+            case gguf.Type.UINT8: return 'uint8';
+            case gguf.Type.INT8: return 'int8';
+            case gguf.Type.UINT16: return 'uint16';
+            case gguf.Type.INT16: return 'int16';
+            case gguf.Type.UINT32: return 'uint32';
+            case gguf.Type.INT32: return 'int32';
+            case gguf.Type.UINT64: return 'uint64';
+            case gguf.Type.INT64: return 'int64';
+            case gguf.Type.FLOAT32: return 'float32';
+            case gguf.Type.FLOAT64: return 'float64';
+            case gguf.Type.BOOL: return 'boolean';
+            case gguf.Type.STRING: return 'string';
+            default: throw new gguf.Error(`Unsupported GGUF type '${type}'.`);
+        }
+    }
+
+    value() {
         const name = this.string();
         const type = this.uint32();
-        const value = this.value(type);
-        return { name, value, type };
+        if (type === gguf.Type.ARRAY) {
+            const elementType = this.uint32();
+            const size = this.uint64().toNumber();
+            const value = new Array(size);
+            for (let i = 0; i < size; i++) {
+                value[i] = this.scalar(elementType);
+            }
+            return { name, value, type: `${this.type(elementType)}[]` };
+        }
+        return { name, value: this.scalar(type), type: this.type(type) };
     }
 
     tensor() {
@@ -696,236 +973,399 @@ gguf.Type = {
     FLOAT64: 12,
 };
 
-// https://github.com/ggml-org/llama.cpp/blob/master/ggml/include/ggml.h
-gguf.QuantizationType = {
-    F32: 0,
-    F16: 1,
-    Q4_0: 2,
-    Q4_1: 3,
-    Q4_2: 4, // deprecated
-    Q4_3: 5, // deprecated
-    Q5_0: 6,
-    Q5_1: 7,
-    Q8_0: 8,
-    Q8_1: 9,
-    Q2_K: 10,
-    Q3_K: 11,
-    Q4_K: 12,
-    Q5_K: 13,
-    Q6_K: 14,
-    Q8_K: 15,
-    IQ2_XXS: 16,
-    IQ2_XS: 17,
-    IQ3_XXS: 18,
-    IQ1_S: 19,
-    IQ4_NL: 20,
-    IQ3_S: 21,
-    IQ2_S: 22,
-    IQ4_XS: 23,
-    I8: 24,
-    I16: 25,
-    I32: 26,
-    I64: 27,
-    F64: 28,
-    IQ1_M: 29,
-    BF16: 30,
-    Q4_0_4_4: 31, // deprecated
-    Q4_0_4_8: 32, // deprecated
-    Q4_0_8_8: 33, // deprecated
-    TQ1_0: 34,
-    TQ2_0: 35,
-    IQ4_NL_4_4: 36, // deprecated
-    IQ4_NL_4_8: 37, // deprecated
-    IQ4_NL_8_8: 38, // deprecated
-    MXFP4: 39
-};
+// https://github.com/ggml-org/llama.cpp/blob/master/ggml/include/ggml.h - ggml_type
+// https://github.com/ggml-org/llama.cpp/blob/master/ggml/src/ggml.c
+// https://github.com/ggml-org/llama.cpp/blob/master/gguf-py/gguf/constants.py - GGML_QUANT_SIZES
+gguf.QuantizationType = [
+    /*  0 */ { name: 'float32',    block_size: 1,   type_size: 4 },
+    /*  1 */ { name: 'float16',    block_size: 1,   type_size: 2 },
+    /*  2 */ { name: 'q4_0',       block_size: 32,  type_size: 2 + 16 },
+    /*  3 */ { name: 'q4_1',       block_size: 32,  type_size: 2 + 2 + 16 },
+    /*  4 */ { name: 'q4_2',       block_size: 16,  type_size: 2 + 8 }, // deprecated
+    /*  5 */ { name: 'q4_3',       block_size: 16,  type_size: 2 + 2 + 8 }, // deprecated
+    /*  6 */ { name: 'q5_0',       block_size: 32,  type_size: 2 + 4 + 16 },
+    /*  7 */ { name: 'q5_1',       block_size: 32,  type_size: 2 + 2 + 4 + 16 },
+    /*  8 */ { name: 'q8_0',       block_size: 32,  type_size: 2 + 32 },
+    /*  9 */ { name: 'q8_1',       block_size: 32,  type_size: 4 + 4 + 32 },
+    /* 10 */ { name: 'q2_K',       block_size: 256, type_size: 2 + 2 + 16 + 64 },
+    /* 11 */ { name: 'q3_K',       block_size: 256, type_size: 2 + 64 + 32 + 12 },
+    /* 12 */ { name: 'q4_K',       block_size: 256, type_size: 2 + 2 + 128 + 12 },
+    /* 13 */ { name: 'q5_K',       block_size: 256, type_size: 2 + 2 + 128 + 32 + 12 },
+    /* 14 */ { name: 'q6_K',       block_size: 256, type_size: 2 + 128 + 64 + 16 },
+    /* 15 */ { name: 'q8_K',       block_size: 256, type_size: 4 + 256 + 32 },
+    /* 16 */ { name: 'iq2_xxs',    block_size: 256, type_size: 2 + 64 },
+    /* 17 */ { name: 'iq2_xs',     block_size: 256, type_size: 2 + 64 + 8 },
+    /* 18 */ { name: 'iq3_xxs',    block_size: 256, type_size: 2 + 64 + 32 },
+    /* 19 */ { name: 'iq1_s',      block_size: 256, type_size: 2 + 32 + 16 },
+    /* 20 */ { name: 'iq4_nl',     block_size: 32,  type_size: 2 + 16 },
+    /* 21 */ { name: 'iq3_s',      block_size: 256, type_size: 2 + 64 + 32 + 8 + 4 },
+    /* 22 */ { name: 'iq2_s',      block_size: 256, type_size: 2 + 64 + 16 },
+    /* 23 */ { name: 'iq4_xs',     block_size: 256, type_size: 2 + 2 + 128 + 4 },
+    /* 24 */ { name: 'int8',       block_size: 1,   type_size: 1 },
+    /* 25 */ { name: 'int16',      block_size: 1,   type_size: 2 },
+    /* 26 */ { name: 'int32',      block_size: 1,   type_size: 4 },
+    /* 27 */ { name: 'int64',      block_size: 1,   type_size: 8 },
+    /* 28 */ { name: 'float64',    block_size: 1,   type_size: 8 },
+    /* 29 */ { name: 'iq1_m',      block_size: 256, type_size: 32 + 16 + 8 },
+    /* 30 */ { name: 'bfloat16',   block_size: 1,   type_size: 2 },
+    /* 31 */ { name: 'q4_0_4_4',   block_size: 32,  type_size: 2 + 16 }, // deprecated
+    /* 32 */ { name: 'q4_0_4_8',   block_size: 32,  type_size: 2 + 16 }, // deprecated
+    /* 33 */ { name: 'q4_0_8_8',   block_size: 32,  type_size: 2 + 16 }, // deprecated
+    /* 34 */ { name: 'tq1_0',      block_size: 256, type_size: 2 + 4 * 13 },
+    /* 35 */ { name: 'tq2_0',      block_size: 256, type_size: 2 + 64 },
+    /* 36 */ { name: 'iq4_nl_4_4', block_size: 32,  type_size: 2 + 16 }, // deprecated
+    /* 37 */ { name: 'iq4_nl_4_8', block_size: 32,  type_size: 2 + 16 }, // deprecated
+    /* 38 */ { name: 'iq4_nl_8_8', block_size: 32,  type_size: 2 + 16 }, // deprecated
+    /* 39 */ { name: 'mxfp4',      block_size: 32,  type_size: 1 + 16 },
+    /* 40 */ { name: 'nvfp4',      block_size: 64,  type_size: 4 + 32 },
+    /* 41 */ { name: 'q1_0',       block_size: 128, type_size: 2 + 16 }
+];
 
 gguf.Context = class {
 
-    constructor(metadata, target, kvMetadata, architecture) {
-        const archType = metadata ? metadata.type(architecture) : null;
-        const archDef = archType && archType.graph ? archType : null;
-        this._archDef = archDef;
+    constructor(schema, target, metadata, architecture) {
+        this._schema = schema;
         this._tensors = target.tensors;
         this._architecture = architecture;
-        this._blockCount = kvMetadata.get(`${architecture}.block_count`) || 0;
+        this._metadata = metadata;
+        const blockCountEntry = metadata.get(`${architecture}.block_count`);
+        this._blockCount = (blockCountEntry && blockCountEntry.value) || 0;
         this._blockTypes = new Map();
-        if (archDef && archDef.graph) {
-            const registerSection = (section) => {
+        this._typeAttributes = new Map([
+            ['RMS_NORM',                [{ key: 'attention.layer_norm_rms_epsilon', name: 'epsilon' }]],
+            ['LAYER_NORM',              [{ key: 'attention.layer_norm_epsilon',     name: 'epsilon' }]],
+            ['MULTI_HEAD_ATTENTION',    [
+                { key: 'attention.head_count',     name: 'head_count' },
+                { key: 'attention.head_count_kv',  name: 'head_count_kv' },
+                { key: 'attention.key_length',     name: 'key_length' },
+                { key: 'attention.value_length',   name: 'value_length' },
+                { key: 'attention.sliding_window', name: 'sliding_window' }
+            ]],
+            ['MULTI_LATENT_ATTENTION',  [
+                { key: 'attention.head_count',       name: 'head_count' },
+                { key: 'attention.head_count_kv',    name: 'head_count_kv' },
+                { key: 'attention.q_lora_rank',      name: 'q_lora_rank' },
+                { key: 'attention.kv_lora_rank',     name: 'kv_lora_rank' },
+                { key: 'attention.key_length_mla',   name: 'key_length_mla' },
+                { key: 'attention.value_length_mla', name: 'value_length_mla' }
+            ]],
+            ['CROSS_ATTENTION',         [
+                { key: 'attention.head_count',    name: 'head_count' },
+                { key: 'attention.head_count_kv', name: 'head_count_kv' },
+                { key: 'attention.key_length',    name: 'key_length' },
+                { key: 'attention.value_length',  name: 'value_length' }
+            ]],
+            ['ROPE_FREQS',              [
+                { key: 'rope.dimension_count',                name: 'dimension_count' },
+                { key: 'rope.freq_base',                      name: 'freq_base' },
+                { key: 'rope.scaling.type',                   name: 'scaling_type' },
+                { key: 'rope.scaling.factor',                 name: 'scaling_factor' },
+                { key: 'rope.scaling.original_context_length', name: 'original_context_length' }
+            ]],
+            ['MAMBA',                   [
+                { key: 'ssm.state_size',     name: 'state_size' },
+                { key: 'ssm.conv_kernel',    name: 'conv_kernel' },
+                { key: 'ssm.inner_size',     name: 'inner_size' },
+                { key: 'ssm.time_step_rank', name: 'time_step_rank' }
+            ]],
+            ['MAMBA2',                  [
+                { key: 'ssm.state_size',  name: 'state_size' },
+                { key: 'ssm.conv_kernel', name: 'conv_kernel' },
+                { key: 'ssm.inner_size',  name: 'inner_size' },
+                { key: 'ssm.group_count', name: 'group_count' }
+            ]],
+            ['CONV_1D',                 [{ key: 'shortconv.l_cache', name: 'l_cache' }]]
+        ]);
+        // Classifier rules are derived from this arch's `blocks` entries:
+        // each entry's `name` and its `tensors` aliases are prefixes that route
+        // to the entry's `name` as the group label. Matching is strict
+        // prefix-with-dot-boundary so e.g. `attn_o` matches `attn_o.weight` but
+        // not `attn_output.weight`.
+        this._classifierRules = [];
+        if (schema && schema.graph) {
+            const registerSection = (section, classify, sectionPrefix) => {
                 if (section) {
+                    const attention = section.find((block) => block.name === 'attention' &&
+                        ['attn_q', 'attn_k', 'attn_v'].every((name) => block.tensors?.includes(name)));
                     for (const block of section) {
+                        // Fused Q/K/V is an alternative to the existing three
+                        // projections; retain explicit mappings such as SSM.
+                        if (classify && block.name === 'attn_qkv' && !block.type && attention) {
+                            this._classifierRules.push({ pattern: `${sectionPrefix}attn_qkv`, group: attention.name });
+                            continue;
+                        }
                         this._blockTypes.set(block.name, block);
                         if (block.tensors) {
                             for (const tensor of block.tensors) {
                                 this._blockTypes.set(tensor, block);
                             }
                         }
+                        if (classify) {
+                            // T5-style encoder/decoder blocks register the implicit
+                            // entry.name pattern under the section prefix (e.g.
+                            // `enc.attn_norm`); curator-supplied `tensors` aliases
+                            // already carry the prefix and pass through verbatim.
+                            this._classifierRules.push({ pattern: `${sectionPrefix}${block.name}`, group: block.name });
+                            for (const tensor of block.tensors || []) {
+                                this._classifierRules.push({ pattern: tensor, group: block.name });
+                            }
+                        }
                     }
                 }
             };
-            for (const section of [archDef.graph.input, archDef.graph.blocks, archDef.graph.output]) {
-                registerSection(section);
+            registerSection(schema.graph.input, false, '');
+            registerSection(schema.graph.blocks, true, '');
+            registerSection(schema.graph.output, false, '');
+            if (schema.graph.encoder) {
+                registerSection(schema.graph.encoder.input, false, 'enc.');
+                registerSection(schema.graph.encoder.blocks, true, 'enc.');
+                registerSection(schema.graph.encoder.output, false, 'enc.');
             }
-            for (const subgraph of [archDef.graph.encoder, archDef.graph.decoder]) {
-                if (subgraph) {
-                    for (const section of [subgraph.input, subgraph.blocks, subgraph.output]) {
-                        registerSection(section);
-                    }
-                }
+            if (schema.graph.decoder) {
+                registerSection(schema.graph.decoder.input, false, 'dec.');
+                registerSection(schema.graph.decoder.blocks, true, 'dec.');
+                registerSection(schema.graph.decoder.output, false, 'dec.');
             }
+            // A fused gate/up projection has the same display type as the
+            // separate dense projections; preserve any explicit mapping.
+            if (!this._blockTypes.has('ffn_gate_up') &&
+                ['ffn_gate', 'ffn_up'].every((name) => this._blockTypes.get(name)?.type === 'MUL_MAT')) {
+                this._blockTypes.set('ffn_gate_up', this._blockTypes.get('ffn_up'));
+                this._classifierRules.push({ pattern: 'ffn_gate_up', group: 'ffn_gate_up' });
+            }
+            // Longest-pattern-first ensures specific aliases (e.g. ffn_gate.{N},
+            // attn_q_norm) win over their shorter prefixes (ffn_gate, attn_q).
+            this._classifierRules.sort((a, b) => b.pattern.length - a.pattern.length);
         }
     }
 
     get structured() {
-        return this._archDef !== null && this._tensors.size > 0;
+        return this._tensors.size > 0 && Array.from(this._blockTypes.values()).some((block) => block.type);
     }
 
     build() {
-        if (!this._archDef || this._tensors.size === 0) {
-            return this._buildFlat();
-        }
         const tensors = this._tensors;
         const layers = [];
         const claimed = new Set();
-        // Collect tensors matching a prefix into a weights map
+        const schema = this._schema;
         const collectWeights = (prefix) => {
             const weights = new Map();
             for (const [name, tensor] of tensors) {
                 if (name.startsWith(`${prefix}.`) || name === prefix) {
-                    const suffix = name.slice(prefix.length + 1) || 'data';
+                    const suffix = name.slice(prefix.length + 1) || name;
                     weights.set(suffix, tensor);
                     claimed.add(name);
                 }
             }
             return weights;
         };
-        // Classify tensor prefix into a semantic component group
-        const classifyTensor = (name) => this._classifyTensor(name);
-        // Resolve display type and category for a component group using metadata
-        const resolveBlock = (group) => {
-            const block = this._blockTypes.get(group);
-            if (block) {
-                return { type: block.type, category: block.category };
+        // Resolve display type/category for a component group from metadata
+        // (when an arch definition is loaded), otherwise default to 'weights'.
+        // Per-node attributes are resolved from the entry's `attributes` list
+        // by looking up `<arch>.<key>` in the model KV (e.g. an `attention`
+        // entry listing `attention.head_count` pulls that KV onto every node).
+        const resolveBlock = (group, index = null) => {
+            let block = this._blockTypes.get(group);
+            if (!block && (group.startsWith('enc.') || group.startsWith('dec.'))) {
+                // T5 enc/dec output sections register block names bare
+                // (e.g. `output_norm`), but pushFlat passes the section-prefixed
+                // tensor key (`enc.output_norm`). Strip the prefix on lookup.
+                block = this._blockTypes.get(group.slice(4));
             }
-            return { type: 'weights' };
+            if (!block) {
+                return { type: 'weights', metadata: new Map() };
+            }
+            // Explicit `attributes` on the entry wins; otherwise fall back to
+            // the type-default list. `attributes: []` opts a component out of
+            // per-node KV synthesis. Each entry is `{ key, name }` (display
+            // label) or a bare string (label derived from the key's last segment).
+            const entries = Array.isArray(block.attributes) ? block.attributes : (this._typeAttributes.get(block.type) || []);
+            const metadata = new Map();
+            for (const entry of entries) {
+                const label = entry.name;
+                const key = `${this._architecture}.${entry.key}`;
+                if (this._metadata.has(key)) {
+                    let value = this._metadata.get(key);
+                    if (this._architecture === 'spark2_5' && group === 'attention' && index !== null) {
+                        const sliding = this._metadata.get('spark2_5.attention.sliding_window_pattern')?.value[index];
+                        if (entry.key === 'attention.sliding_window' && !sliding) {
+                            continue;
+                        }
+                        if (Array.isArray(value.value)) {
+                            value = { ...value, value: value.value[index], type: value.type.replace(/\[\]$/, '') };
+                        }
+                    }
+                    metadata.set(label, value);
+                }
+            }
+            return { type: block.type || 'weights', category: block.category, metadata, residual: block.residual };
         };
-        // Build global (non-block) input tensors
-        const globalPrefixes = ['token_embd', 'token_types', 'token_embd_norm', 'position_embd', 'rope_freqs'];
-        for (const prefix of globalPrefixes) {
-            const weights = collectWeights(prefix);
-            if (weights.size > 0) {
-                const resolved = resolveBlock(prefix);
-                layers.push({ name: prefix, type: resolved.type, category: resolved.category, weights, metadata: new Map(), layers: [] });
+        const pushFlat = (prefix, weights) => {
+            const resolved = resolveBlock(prefix);
+            layers.push({ name: prefix, type: resolved.type, category: resolved.category, weights, metadata: resolved.metadata, layers: [] });
+        };
+        // Build a structured block at `blockPrefix`, returning sub-layers in
+        // discovery order. Tensors in the block are grouped by component
+        // (attn, ffn, ...) via _classifyTensor.
+        const buildBlockLayers = (blockPrefix, index) => {
+            // For T5-style encoder/decoder blocks (`enc.blk.N` / `dec.blk.N`),
+            // metadata aliases preserve the `enc.`/`dec.` segment (e.g.
+            // `enc.attn_q`) to disambiguate the two subgraphs. Prepend it back
+            // onto the bare tensor name before classifying.
+            let sectionPrefix = '';
+            if (blockPrefix.startsWith('enc.')) {
+                sectionPrefix = 'enc.';
+            } else if (blockPrefix.startsWith('dec.')) {
+                sectionPrefix = 'dec.';
             }
-        }
-        // Build block sub-graphs
-        for (let i = 0; i < this._blockCount; i++) {
-            const blockPrefix = `blk.${i}`;
-            // Collect all tensors in this block and group by component
-            const groups = new Map();
-            const order = [];
+            const entries = [];
+            const scores = new Map();
             for (const [name] of tensors) {
                 if (name.startsWith(`${blockPrefix}.`)) {
                     const rest = name.slice(blockPrefix.length + 1);
-                    const group = classifyTensor(rest);
-                    if (!groups.has(group)) {
-                        groups.set(group, new Map());
-                        order.push(group);
+                    const tensorName = `${sectionPrefix}${rest}`;
+                    entries.push({ name, rest, tensorName });
+                    for (const group of this._classifyTensorGroups(tensorName)) {
+                        scores.set(group, (scores.get(group) || 0) + 1);
                     }
-                    groups.get(group).set(rest, name);
                 }
             }
-            // Build sub-nodes for each component group in discovery order
+            const groups = new Map();
+            const order = [];
+            for (const { name, rest, tensorName } of entries) {
+                const group = this._classifyTensor(tensorName, scores);
+                if (!groups.has(group)) {
+                    groups.set(group, new Map());
+                    order.push(group);
+                }
+                groups.get(group).set(rest, name);
+            }
             const blockLayers = [];
             for (const group of order) {
-                const tensorMap = groups.get(group);
                 const weights = new Map();
-                for (const [suffix, fullName] of tensorMap) {
-                    const tensor = tensors.get(fullName);
-                    if (tensor) {
-                        weights.set(suffix, tensor);
-                        claimed.add(fullName);
-                    }
+                for (const [suffix, fullName] of groups.get(group)) {
+                    weights.set(suffix, tensors.get(fullName));
+                    claimed.add(fullName);
                 }
                 if (weights.size > 0) {
-                    const resolved = resolveBlock(group);
-                    blockLayers.push({ name: group, type: resolved.type, category: resolved.category, weights, metadata: new Map(), layers: [] });
+                    const resolved = resolveBlock(group, index);
+                    blockLayers.push({ name: group, type: resolved.type, category: resolved.category, weights, metadata: resolved.metadata, residual: resolved.residual, layers: [] });
                 }
             }
-            if (blockLayers.length > 0) {
-                layers.push({ name: `blk.${i}`, type: this._architecture, layers: blockLayers, metadata: new Map(), weights: new Map() });
+            return blockLayers;
+        };
+        // Discover block indices from tensor names.
+        const blockIndices = new Set();
+        const encDecIndices = new Map([['enc', new Set()], ['dec', new Set()]]);
+        const blockRe = /^(?:(enc|dec)\.)?blk\.(\d+)\./;
+        for (const [name] of tensors) {
+            const m = name.match(blockRe);
+            if (m) {
+                const idx = parseInt(m[2], 10);
+                if (m[1]) {
+                    encDecIndices.get(m[1]).add(idx);
+                } else {
+                    blockIndices.add(idx);
+                }
             }
         }
-        // Build global output tensors
-        const outputPrefixes = ['output_norm', 'output'];
-        for (const prefix of outputPrefixes) {
-            const weights = collectWeights(prefix);
-            if (weights.size > 0) {
-                const resolved = resolveBlock(prefix);
-                layers.push({ name: prefix, type: resolved.type, category: resolved.category, weights, metadata: new Map(), layers: [] });
+        // When an arch definition is loaded, honor its declared block_count
+        // even if some indices have no tensors (those produce empty blocks
+        // and get skipped). Otherwise iterate only discovered indices.
+        const expandIndices = (discovered) => {
+            if (schema && this._blockCount > 0) {
+                const out = [];
+                for (let i = 0; i < this._blockCount; i++) {
+                    out.push(i);
+                }
+                return out;
+            }
+            return Array.from(discovered).sort((a, b) => a - b);
+        };
+        // Common globals across architectures (also used as the fallback when
+        // no arch metadata is loaded). Arch-specific entries from
+        // gguf-metadata.json's `graph.input` / `graph.output` are unioned in.
+        const globalPrefixes = new Set(['token_embd', 'token_types', 'token_embd_norm', 'position_embd', 'rope_freqs']);
+        // Output prefixes follow metadata declaration order; the hardcoded
+        // defaults are appended last as the no-metadata fallback.
+        const outputPrefixes = new Set();
+        const collectNames = (set, section) => {
+            if (section) {
+                for (const entry of section) {
+                    set.add(entry.name);
+                }
+            }
+        };
+        if (schema && schema.graph) {
+            collectNames(globalPrefixes, schema.graph.input);
+            collectNames(outputPrefixes, schema.graph.output);
+            for (const sub of [schema.graph.encoder, schema.graph.decoder]) {
+                if (sub) {
+                    collectNames(globalPrefixes, sub.input);
+                    collectNames(outputPrefixes, sub.output);
+                }
             }
         }
-        // Build encoder/decoder sub-graphs for T5-style models
-        for (const [encPrefix, label] of [['enc', 'Encoder'], ['dec', 'Decoder']]) {
-            const graph = this._archDef.graph;
-            const subgraph = graph ? graph[encPrefix === 'enc' ? 'encoder' : 'decoder'] : null;
-            if (subgraph) {
-                for (const prefix of globalPrefixes) {
-                    const fullPrefix = `${encPrefix}.${prefix}`;
-                    const weights = collectWeights(fullPrefix);
-                    if (weights.size > 0) {
-                        const resolved = resolveBlock(prefix);
-                        layers.push({ name: fullPrefix, type: resolved.type, category: resolved.category, weights, metadata: new Map(), layers: [] });
+        outputPrefixes.add('output_norm');
+        outputPrefixes.add('output');
+        if (schema && schema.graph) {
+            // An explicit `output` placement wins over the hardcoded global
+            // defaults (e.g. LFM2 stores its final norm as `token_embd_norm`).
+            for (const name of outputPrefixes) {
+                globalPrefixes.delete(name);
+            }
+        }
+        // Section builder phases — inputs/blocks/outputs are split so encoder-decoder
+        // archs can defer global outputs until after enc/dec sections.
+        const fullPrefix = (prefix, name) => prefix ? `${prefix}.${name}` : name;
+        const sectionFlat = (prefix, names) => {
+            for (const name of names) {
+                const key = fullPrefix(prefix, name);
+                const block = this._blockTypes.get(name);
+                const members = [name, ...(block?.tensors || [])];
+                const weights = new Map();
+                for (const member of members) {
+                    const memberWeights = collectWeights(fullPrefix(prefix, member));
+                    for (const [param, tensor] of memberWeights) {
+                        const weightName = members.length > 1 ? `${member}.${param}` : param;
+                        weights.set(weightName, tensor);
                     }
+                }
+                if (this._architecture === 'spark2_5' && !prefix && name === 'output' && weights.size === 0 && tensors.has('token_embd.weight')) {
+                    weights.set('weight', tensors.get('token_embd.weight'));
+                }
+                if (weights.size > 0) {
+                    pushFlat(key, weights);
                 }
             }
-            for (let i = 0; i < this._blockCount; i++) {
-                const blockPrefix = `${encPrefix}.blk.${i}`;
-                const groups = new Map();
-                const order = [];
-                for (const [name] of tensors) {
-                    if (name.startsWith(`${blockPrefix}.`)) {
-                        const rest = name.slice(blockPrefix.length + 1);
-                        const group = classifyTensor(rest);
-                        if (!groups.has(group)) {
-                            groups.set(group, new Map());
-                            order.push(group);
-                        }
-                        groups.get(group).set(rest, name);
-                    }
-                }
-                const blockLayers = [];
-                for (const group of order) {
-                    const tensorMap = groups.get(group);
-                    const weights = new Map();
-                    for (const [suffix, fullName] of tensorMap) {
-                        const tensor = tensors.get(fullName);
-                        if (tensor) {
-                            weights.set(suffix, tensor);
-                            claimed.add(fullName);
-                        }
-                    }
-                    if (weights.size > 0) {
-                        const resolved = resolveBlock(group);
-                        blockLayers.push({ name: group, type: resolved.type, category: resolved.category, weights, metadata: new Map(), layers: [] });
-                    }
-                }
+        };
+        const sectionBlocks = (prefix, blockType, indices) => {
+            for (const i of indices) {
+                const blockPrefix = fullPrefix(prefix, `blk.${i}`);
+                const blockLayers = buildBlockLayers(blockPrefix, i);
                 if (blockLayers.length > 0) {
-                    layers.push({ name: blockPrefix, type: `${this._architecture} ${label}`, layers: blockLayers, metadata: new Map(), weights: new Map() });
+                    layers.push({ name: blockPrefix, type: blockType, layers: blockLayers, metadata: new Map(), weights: new Map() });
                 }
             }
-            if (subgraph) {
-                for (const prefix of outputPrefixes) {
-                    const fullPrefix = `${encPrefix}.${prefix}`;
-                    const weights = collectWeights(fullPrefix);
-                    if (weights.size > 0) {
-                        const resolved = resolveBlock(prefix);
-                        layers.push({ name: fullPrefix, type: resolved.type, category: resolved.category, weights, metadata: new Map(), layers: [] });
-                    }
-                }
+        };
+        const archName = this._architecture;
+        const subgraphs = [];
+        for (const [encPrefix, label] of [['enc', 'Encoder'], ['dec', 'Decoder']]) {
+            const subgraph = schema && schema.graph ? schema.graph[encPrefix === 'enc' ? 'encoder' : 'decoder'] : null;
+            const indices = expandIndices(encDecIndices.get(encPrefix));
+            if (subgraph || indices.length > 0) {
+                subgraphs.push({ prefix: encPrefix, label, indices });
             }
         }
-        // Collect any unclaimed tensors
+        sectionFlat('', globalPrefixes);
+        sectionBlocks('', archName, expandIndices(blockIndices));
+        for (const sg of subgraphs) {
+            sectionFlat(sg.prefix, globalPrefixes);
+            sectionBlocks(sg.prefix, `${archName} ${sg.label}`, sg.indices);
+            sectionFlat(sg.prefix, outputPrefixes);
+        }
+        sectionFlat('', outputPrefixes);
+        // Flush unclaimed tensors as flat 'weights' nodes, grouping by tensor key.
         for (const [name, tensor] of tensors) {
             if (!claimed.has(name)) {
                 const parts = name.split('.');
@@ -942,200 +1382,41 @@ gguf.Context = class {
         return layers;
     }
 
-    _buildFlat() {
-        const tensors = this._tensors;
-        const layers = [];
-        const claimed = new Set();
-        const blockPattern = /^blk\.(\d+)\./;
-        const encDecPattern = /^(enc|dec)\.blk\.(\d+)\./;
-        const blockIndices = new Set();
-        const encDecIndices = new Map();
-        for (const [name] of tensors) {
-            const m = name.match(blockPattern);
-            if (m) {
-                blockIndices.add(parseInt(m[1], 10));
-            }
-            const m2 = name.match(encDecPattern);
-            if (m2) {
-                if (!encDecIndices.has(m2[1])) {
-                    encDecIndices.set(m2[1], new Set());
+    _classifyTensorGroups(name) {
+        const groups = [];
+        let length = -1;
+        for (const rule of this._classifierRules) {
+            const pattern = rule.pattern;
+            let match = false;
+            if (pattern.includes('{N}')) {
+                let regex = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                regex = regex.replace(/\\\{N\\\}/g, '\\d+');
+                if (new RegExp(`^${regex}(\\.|$)`).test(name)) {
+                    match = true;
                 }
-                encDecIndices.get(m2[1]).add(parseInt(m2[2], 10));
+            } else if (name === pattern || name.startsWith(`${pattern}.`)) {
+                match = true;
+            }
+            if (match) {
+                if (length === -1) {
+                    length = pattern.length;
+                } else if (pattern.length < length) {
+                    break;
+                }
+                if (!groups.includes(rule.group)) {
+                    groups.push(rule.group);
+                }
             }
         }
-        if (blockIndices.size > 0 || encDecIndices.size > 0) {
-            const collectWeights = (prefix) => {
-                const weights = new Map();
-                for (const [name, tensor] of tensors) {
-                    if (name.startsWith(`${prefix}.`) || name === prefix) {
-                        const suffix = name.slice(prefix.length + 1) || 'data';
-                        weights.set(suffix, tensor);
-                        claimed.add(name);
-                    }
-                }
-                return weights;
-            };
-            const globalPrefixes = ['token_embd', 'token_types', 'token_embd_norm', 'position_embd', 'rope_freqs'];
-            for (const prefix of globalPrefixes) {
-                const weights = collectWeights(prefix);
-                if (weights.size > 0) {
-                    layers.push({ name: prefix, type: 'weights', metadata: new Map(), weights, layers: [] });
-                }
-            }
-            const buildStructuredBlocks = (blockPrefix) => {
-                const groups = new Map();
-                const order = [];
-                for (const [name] of tensors) {
-                    if (name.startsWith(`${blockPrefix}.`)) {
-                        const rest = name.slice(blockPrefix.length + 1);
-                        const group = this._classifyTensor(rest);
-                        if (!groups.has(group)) {
-                            groups.set(group, new Map());
-                            order.push(group);
-                        }
-                        groups.get(group).set(rest, name);
-                    }
-                }
-                const blockLayers = [];
-                for (const group of order) {
-                    const tensorMap = groups.get(group);
-                    const weights = new Map();
-                    for (const [suffix, fullName] of tensorMap) {
-                        const tensor = tensors.get(fullName);
-                        if (tensor) {
-                            weights.set(suffix, tensor);
-                            claimed.add(fullName);
-                        }
-                    }
-                    if (weights.size > 0) {
-                        blockLayers.push({ name: group, type: 'weights', metadata: new Map(), weights, layers: [] });
-                    }
-                }
-                return blockLayers;
-            };
-            for (const i of Array.from(blockIndices).sort((a, b) => a - b)) {
-                const blockLayers = buildStructuredBlocks(`blk.${i}`);
-                if (blockLayers.length > 0) {
-                    layers.push({ name: `blk.${i}`, type: this._architecture, layers: blockLayers, metadata: new Map(), weights: new Map() });
-                }
-            }
-            for (const [prefix, indices] of encDecIndices) {
-                for (const i of Array.from(indices).sort((a, b) => a - b)) {
-                    const blockLayers = buildStructuredBlocks(`${prefix}.blk.${i}`);
-                    if (blockLayers.length > 0) {
-                        const label = prefix === 'enc' ? 'Encoder' : 'Decoder';
-                        layers.push({ name: `${prefix}.blk.${i}`, type: `${this._architecture} ${label}`, layers: blockLayers, metadata: new Map(), weights: new Map() });
-                    }
-                }
-            }
-            const outputPrefixes = ['output_norm', 'output'];
-            for (const prefix of outputPrefixes) {
-                const weights = collectWeights(prefix);
-                if (weights.size > 0) {
-                    layers.push({ name: prefix, type: 'weights', metadata: new Map(), weights, layers: [] });
-                }
-            }
-            for (const [name, tensor] of tensors) {
-                if (!claimed.has(name)) {
-                    const parts = name.split('.');
-                    const param = parts.pop();
-                    const key = parts.join('.');
-                    const existing = layers.find((l) => l.name === key && l.type === 'weights');
-                    if (existing) {
-                        existing.weights.set(param, tensor);
-                    } else {
-                        layers.push({ name: key || name, type: 'weights', metadata: new Map(), weights: new Map([[param, tensor]]), layers: [] });
-                    }
-                }
-            }
-            return layers;
-        }
-        const flatLayers = new Map();
-        for (const [name, tensor] of tensors) {
-            const parts = name.split('.');
-            const param = parts.pop();
-            const key = parts.join('.');
-            if (!flatLayers.has(key)) {
-                flatLayers.set(key, { name: key, type: 'weights', metadata: new Map(), weights: new Map() });
-            }
-            flatLayers.get(key).weights.set(param, tensor);
-        }
-        return Array.from(flatLayers.values());
+        return groups;
     }
 
-    _classifyTensor(name) {
-        if (!gguf.Context._componentGroups) {
-            gguf.Context._componentGroups = [
-                { match: /^attn_norm/, group: 'attn_norm' },
-                { match: /^attn_q_norm/, group: 'attn_norm' },
-                { match: /^attn_k_norm/, group: 'attn_norm' },
-                { match: /^attn_sub_norm/, group: 'attn_norm' },
-                { match: /^attn_q_a/, group: 'attention' },
-                { match: /^attn_q_b/, group: 'attention' },
-                { match: /^attn_kv_a/, group: 'attention' },
-                { match: /^attn_kv_b/, group: 'attention' },
-                { match: /^attn_k_b/, group: 'attention' },
-                { match: /^attn_qkv/, group: 'attention' },
-                { match: /^attn_q/, group: 'attention' },
-                { match: /^attn_k/, group: 'attention' },
-                { match: /^attn_v/, group: 'attention' },
-                { match: /^attn_output/, group: 'attention' },
-                { match: /^attn_out/, group: 'attention' },
-                { match: /^attn_o\./, group: 'attention' },
-                { match: /^attn_rel_b/, group: 'attention' },
-                { match: /^attn_sinks/, group: 'attention' },
-                { match: /^attn_rot_embd/, group: 'attention' },
-                { match: /^attn_post_norm/, group: 'attn_post_norm' },
-                { match: /^cross_attn_norm/, group: 'cross_attn_norm' },
-                { match: /^cross_attn_/, group: 'cross_attention' },
-                { match: /^ffn_norm/, group: 'ffn_norm' },
-                { match: /^ffn_gate_inp/, group: 'ffn_gate_inp' },
-                { match: /^ffn_exp_probs/, group: 'ffn_gate_inp' },
-                { match: /^ffn_gate_exps/, group: 'ffn_gate_exps' },
-                { match: /^ffn_gate\.\d+/, group: 'ffn_gate_exps' },
-                { match: /^ffn_up_exps/, group: 'ffn_up_exps' },
-                { match: /^ffn_up\.\d+/, group: 'ffn_up_exps' },
-                { match: /^ffn_down_exps/, group: 'ffn_down_exps' },
-                { match: /^ffn_down\.\d+/, group: 'ffn_down_exps' },
-                { match: /^ffn_gate_shexp/, group: 'ffn_gate_shexp' },
-                { match: /^ffn_up_shexp/, group: 'ffn_up_shexp' },
-                { match: /^ffn_down_shexp/, group: 'ffn_down_shexp' },
-                { match: /^ffn_gate/, group: 'ffn_gate' },
-                { match: /^ffn_up/, group: 'ffn_up' },
-                { match: /^ffn_down/, group: 'ffn_down' },
-                { match: /^ffn_act/, group: 'ffn_act' },
-                { match: /^ffn_sub_norm/, group: 'ffn_sub_norm' },
-                { match: /^ffn_post_norm/, group: 'ffn_post_norm' },
-                { match: /^ssm_/, group: 'ssm' },
-                { match: /^time_mix_/, group: 'time_mix' },
-                { match: /^channel_mix_/, group: 'channel_mix' },
-                { match: /^layer_output_norm/, group: 'layer_output_norm' },
-                { match: /^attn_output_norm/, group: 'attn_output_norm' },
-                { match: /^post_attention_norm/, group: 'attn_post_norm' }
-            ];
+    _classifyTensor(name, scores = null) {
+        const groups = this._classifyTensorGroups(name);
+        if (scores) {
+            groups.sort((a, b) => (scores.get(b) || 0) - (scores.get(a) || 0));
         }
-        for (const rule of gguf.Context._componentGroups) {
-            if (rule.match.test(name)) {
-                return rule.group;
-            }
-        }
-        return 'other';
-    }
-};
-
-gguf.Utility = class {
-
-    static enum(type, value) {
-        gguf.Utility._enums = gguf.Utility._enums || new Map();
-        if (!gguf.Utility._enums.has(type)) {
-            const entries = new Map(Object.entries(type).map(([key, value]) => [value, key]));
-            gguf.Utility._enums.set(type, entries);
-        }
-        const entries = gguf.Utility._enums.get(type);
-        if (entries.has(value)) {
-            return entries.get(value);
-        }
-        return value;
+        return groups.length > 0 ? groups[0] : 'other';
     }
 };
 

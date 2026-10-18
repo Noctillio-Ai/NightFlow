@@ -71,6 +71,11 @@ executorch_flatbuffer.TensorDataLocation = {
     EXTERNAL: 1, '1': 'EXTERNAL'
 };
 
+executorch_flatbuffer.DeviceType = {
+    CPU: 0, '0': 'CPU',
+    CUDA: 1, '1': 'CUDA'
+};
+
 executorch_flatbuffer.ExtraTensorInfo = class ExtraTensorInfo {
 
     static decode(reader, position) {
@@ -78,6 +83,8 @@ executorch_flatbuffer.ExtraTensorInfo = class ExtraTensorInfo {
         $.mutable_data_segments_idx = reader.uint64_(position, 4, 0n);
         $.fully_qualified_name = reader.string_(position, 6, null);
         $.location = reader.int8_(position, 8, 0);
+        $.device_type = reader.int8_(position, 10, 0);
+        $.device_index = reader.int8_(position, 12, 0);
         return $;
     }
 };
@@ -230,12 +237,23 @@ executorch_flatbuffer.KernelCall = class KernelCall {
     }
 };
 
+executorch_flatbuffer.DelegateScratch = class DelegateScratch {
+
+    static decode(reader, position) {
+        const $ = new executorch_flatbuffer.DelegateScratch();
+        $.allocation = reader.table(position, 4, executorch_flatbuffer.AllocationDetails);
+        $.size = reader.uint64_(position, 6, 0n);
+        return $;
+    }
+};
+
 executorch_flatbuffer.DelegateCall = class DelegateCall {
 
     static decode(reader, position) {
         const $ = new executorch_flatbuffer.DelegateCall();
         $.delegate_index = reader.int32_(position, 4, 0);
         $.args = reader.array(position, 6, Int32Array);
+        $.scratch = reader.tables(position, 8, executorch_flatbuffer.DelegateScratch);
         return $;
     }
 };
@@ -374,6 +392,18 @@ executorch_flatbuffer.ExecutionPlan = class ExecutionPlan {
         $.operators = reader.tables(position, 16, executorch_flatbuffer.Operator);
         $.delegates = reader.tables(position, 18, executorch_flatbuffer.BackendDelegate);
         $.non_const_buffer_sizes = reader.int64s_(position, 20);
+        $.non_const_buffer_device = reader.tables(position, 22, executorch_flatbuffer.NonConstBufferDevice);
+        return $;
+    }
+};
+
+executorch_flatbuffer.NonConstBufferDevice = class NonConstBufferDevice {
+
+    static decode(reader, position) {
+        const $ = new executorch_flatbuffer.NonConstBufferDevice();
+        $.buffer_idx = reader.int32_(position, 4, 0);
+        $.device_type = reader.int8_(position, 6, 0);
+        $.device_index = reader.int8_(position, 8, 0);
         return $;
     }
 };
@@ -611,6 +641,7 @@ fb_xnnpack.XNodeUnion = class {
             case 45: return fb_xnnpack.XNNSin.decode(reader, position);
             case 46: return fb_xnnpack.XNNCopy.decode(reader, position);
             case 47: return fb_xnnpack.XNNCos.decode(reader, position);
+            case 48: return fb_xnnpack.XNNApproxGelu.decode(reader, position);
             default: return undefined;
         }
     }
@@ -1251,6 +1282,15 @@ fb_xnnpack.XNNCos = class XNNCos {
     }
 };
 
+fb_xnnpack.XNNApproxGelu = class XNNApproxGelu {
+
+    static decode(reader, position) {
+        const $ = new fb_xnnpack.XNNApproxGelu();
+        fb_xnnpack._XNNNode1x1.decode(reader, position, $);
+        return $;
+    }
+};
+
 vkgraph.OperatorCall = class OperatorCall {
 
     static decode(reader, position) {
@@ -1288,7 +1328,9 @@ vkgraph.VkMemoryLayout = {
     PACKED_INT8_4W4C: 3, '3': 'PACKED_INT8_4W4C',
     PACKED_INT8_4H4W: 4, '4': 'PACKED_INT8_4H4W',
     PACKED_INT8_4W: 5, '5': 'PACKED_INT8_4W',
+    PACKED_INT8_4C: 6, '6': 'PACKED_INT8_4C',
     PACKED_INT8_4C1W: 8, '8': 'PACKED_INT8_4C1W',
+    PACKED_INT8_CONV2D: 9, '9': 'PACKED_INT8_CONV2D',
     DEFAULT_LAYOUT: 255, '255': 'DEFAULT_LAYOUT'
 };
 

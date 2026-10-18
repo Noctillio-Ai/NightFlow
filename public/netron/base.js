@@ -100,6 +100,50 @@ if (!DataView.prototype.getFloat4e2m1) {
     };
 }
 
+if (!DataView.prototype.getFloat6e2m3) {
+    const values = [
+        0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875,
+        1, 1.125, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875,
+        2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75,
+        4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5
+    ];
+    DataView.__float6e2m3_float32 = new Float32Array(values.concat(values.map((value) => -value)));
+    DataView.prototype.getFloat6e2m3 = function(offset) {
+        const position = (offset >> 2) * 3;
+        let value = 0;
+        switch (offset & 3) {
+            case 0: value = this.getUint8(position) & 0x3f; break;
+            case 1: value = (this.getUint16(position, true) >> 6) & 0x3f; break;
+            case 2: value = (this.getUint16(position + 1, true) >> 4) & 0x3f; break;
+            case 3: value = this.getUint8(position + 2) >> 2; break;
+            default: break;
+        }
+        return DataView.__float6e2m3_float32[value];
+    };
+}
+
+if (!DataView.prototype.getFloat6e3m2) {
+    const values = [
+        0, 0.0625, 0.125, 0.1875, 0.25, 0.3125, 0.375, 0.4375,
+        0.5, 0.625, 0.75, 0.875, 1, 1.25, 1.5, 1.75,
+        2, 2.5, 3, 3.5, 4, 5, 6, 7,
+        8, 10, 12, 14, 16, 20, 24, 28
+    ];
+    DataView.__float6e3m2_float32 = new Float32Array(values.concat(values.map((value) => -value)));
+    DataView.prototype.getFloat6e3m2 = function(offset) {
+        const position = (offset >> 2) * 3;
+        let value = 0;
+        switch (offset & 3) {
+            case 0: value = this.getUint8(position) & 0x3f; break;
+            case 1: value = (this.getUint16(position, true) >> 6) & 0x3f; break;
+            case 2: value = (this.getUint16(position + 1, true) >> 4) & 0x3f; break;
+            case 3: value = this.getUint8(position + 2) >> 2; break;
+            default: break;
+        }
+        return DataView.__float6e3m2_float32[value];
+    };
+}
+
 if (!DataView.prototype.getFloat8e4m3) {
     DataView.__float8e4m3_float32 = new Float32Array(1);
     DataView.__float8e4m3_uint32 = new Uint32Array(DataView.__float8e4m3_float32.buffer, DataView.__float8e4m3_float32.byteOffset, 1);
@@ -261,7 +305,7 @@ if (!DataView.prototype.getFloat8e8m0fnu) {
         if (value === 255) {
             return NaN;
         }
-        DataView.__float8e8m0fnu_uint32[0] = value << 23;
+        DataView.__float8e8m0fnu_uint32[0] = value === 0 ? 0x00400000 : value << 23;
         return DataView.__float8e8m0fnu_float32[0];
     };
 }
@@ -697,11 +741,11 @@ base.Tensor = class {
             ['qint8', 1], ['qint16', 2], ['qint32', 4],
             ['quint8', 1], ['quint16', 2], ['quint32', 4],
             ['xint8', 1],
-            ['int8', 1], ['int16', 2], ['int32', 4], ['int64', 8], ['int128', 16],
+            ['int8', 1], ['int16', 2], ['int32', 4], ['int48', 6], ['int64', 8], ['int128', 16],
             ['uint8', 1], ['uint16', 2], ['uint32', 4,], ['uint64', 8],
-            ['float16', 2], ['float32', 4], ['float64', 8], ['bfloat16', 2],
+            ['float16', 2], ['float32', 4], ['float64', 8], ['float80', 10], ['float128', 16], ['bfloat16', 2],
             ['complex<float32>', 8], ['complex<float64>', 16], ['complex<int32>', 8],
-            ['float8e4m3fn', 1], ['float8e4m3fnuz', 1], ['float8e5m2', 1], ['float8e5m2fnuz', 1], ['float8e4m3b11fnuz', 1], ['float8e3m4', 1], ['float8e4m3', 1], ['float4e2m1fn', 1], ['float6e2m3fn', 1], ['float6e3m2fn', 1], ['float8e8m0fnu', 1]
+            ['float8e4m3fn', 1], ['float8e4m3fnuz', 1], ['float8e5m2', 1], ['float8e5m2fnuz', 1], ['float8e4m3b11fnuz', 1], ['float8e3m4', 1], ['float8e4m3', 1], ['float6e2m3fn', 1], ['float6e3m2fn', 1], ['float8e8m0fnu', 1], ['float8e8m0', 1]
         ]);
     }
 
@@ -848,8 +892,8 @@ base.Tensor = class {
                             const itemsize = base.Tensor._dataTypes.get(dataType);
                             const length = context.data.length;
                             const stride = context.stride;
-                            if (length < (itemsize * shape.reduce((a, v) => a * v, 1))) {
-                                const max = stride.reduce((a, v, i) => v > stride[i] ? i : a, 0);
+                            if (length < (itemsize * shape.reduce((a, v) => a * v, 1)) && !stride.every((v) => v === 0)) {
+                                const max = stride.reduce((a, v, i) => v > stride[a] ? i : a, 0);
                                 if (length !== (itemsize * stride[max] * shape[max])) {
                                     throw new Error('Invalid tensor data size.');
                                 }
@@ -864,9 +908,21 @@ base.Tensor = class {
                             context.dataType = 'int';
                             context.bits = parseInt(dataType.substring(3), 10);
                             context.itemsize = 1;
-                        } else if (dataType === 'float4e2m1') {
-                            context.dataType = 'float4e2m1';
+                        } else if (dataType === 'float4e2m1' || dataType === 'float4e2m1fn') {
+                            context.dataType = dataType;
                             context.bits = 4;
+                            context.itemsize = 1;
+                        } else if (dataType === 'float6e2m3' || dataType === 'float6e3m2') {
+                            context.dataType = dataType;
+                            context.bits = 6;
+                            context.itemsize = 1;
+                        } else if (dataType === 'quint4x2') {
+                            context.dataType = 'uint';
+                            context.bits = 4;
+                            context.itemsize = 1;
+                        } else if (dataType === 'quint2x4') {
+                            context.dataType = 'uint';
+                            context.bits = 2;
                             context.itemsize = 1;
                         } else {
                             throw new Error(`Tensor data type '${dataType}' is not implemented.`);
@@ -876,7 +932,7 @@ base.Tensor = class {
                     case '|': {
                         context.data = this.values;
                         const integer = (dataType.startsWith('int') && !isNaN(parseInt(dataType.substring(3), 10))) || (dataType.startsWith('uint') && !isNaN(parseInt(dataType.substring(4), 10)));
-                        if (!base.Tensor._dataTypes.has(dataType) && dataType !== 'string' && dataType !== 'object' && dataType !== 'datetime' && dataType !== 'void' && !integer) {
+                        if (!base.Tensor._dataTypes.has(dataType) && dataType !== 'string' && dataType !== 'object' && dataType !== 'datetime' && dataType !== 'void' && dataType !== 'float4e2m1' && dataType !== 'float4e2m1fn' && !integer) {
                             throw new Error(`Tensor data type '${dataType}' is not implemented.`);
                         }
                         const size = context.dimensions.reduce((a, v) => a * v, 1);
@@ -908,10 +964,20 @@ base.Tensor = class {
                 break;
         }
         if (indices.length > 0) {
-            if (Object.prototype.hasOwnProperty.call(indices[0], 'low')) {
+            if (Array.isArray(indices[0])) {
+                const rank = indices[0].length;
+                const strides = new Array(rank);
+                let stride = 1;
+                for (let i = rank - 1; i >= 0; i--) {
+                    strides[i] = stride;
+                    stride *= dimensions[i];
+                }
                 for (let i = 0; i < indices.length; i++) {
-                    const index = indices[i].toNumber();
-                    array[index] = values[i];
+                    let offset = 0;
+                    for (let j = 0; j < rank; j++) {
+                        offset += Number(indices[i][j]) * strides[j];
+                    }
+                    array[offset] = values[i];
                 }
             } else {
                 for (let i = 0; i < indices.length; i++) {
@@ -932,152 +998,168 @@ base.Tensor = class {
         if (dimension === shape.length - 1) {
             const ellipsis = (context.count + size) > context.limit;
             const length = ellipsis ? context.limit - context.count : size;
-            const max = offset + (length * stride);
             switch (dataType) {
                 case 'boolean':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getUint8(offset) !== 0);
                     }
                     break;
                 case 'qint8':
                 case 'xint8':
                 case 'int8':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getInt8(offset));
                     }
                     break;
                 case 'qint16':
                 case 'int16':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getInt16(offset, this._littleEndian));
                     }
                     break;
                 case 'qint32':
                 case 'int32':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getInt32(offset, this._littleEndian));
                     }
                     break;
+                case 'int48':
+                    for (let i = 0; i < length; i++, offset += stride) {
+                        results.push(view.getInt48(offset, this._littleEndian));
+                    }
+                    break;
                 case 'int64':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getBigInt64(offset, this._littleEndian));
                     }
                     break;
                 case 'int':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getIntBits(offset, context.bits, this._littleEndian));
                     }
                     break;
                 case 'quint8':
                 case 'uint8':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getUint8(offset));
                     }
                     break;
                 case 'quint16':
                 case 'uint16':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getUint16(offset, this._littleEndian));
                     }
                     break;
                 case 'quint32':
                 case 'uint32':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getUint32(offset, this._littleEndian));
                     }
                     break;
                 case 'uint64':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getBigUint64(offset, this._littleEndian));
                     }
                     break;
                 case 'uint':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getUintBits(offset, context.bits, this._littleEndian));
                     }
                     break;
                 case 'float16':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat16(offset, this._littleEndian));
                     }
                     break;
                 case 'float32':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat32(offset, this._littleEndian));
                     }
                     break;
                 case 'float64':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat64(offset, this._littleEndian));
                     }
                     break;
                 case 'bfloat16':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getBfloat16(offset, this._littleEndian));
                     }
                     break;
                 case 'complex<int32>':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getComplexInt32(offset, this._littleEndian));
                     }
                     break;
                 case 'complex<float16>':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getComplexFloat16(offset, this._littleEndian));
                     }
                     break;
                 case 'complex<float32>':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getComplexFloat32(offset, this._littleEndian));
                     }
                     break;
                 case 'complex<float64>':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getComplexFloat64(offset, this._littleEndian));
                     }
                     break;
                 case 'float4e2m1':
-                    for (; offset < max; offset += stride) {
+                case 'float4e2m1fn':
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat4e2m1(offset));
                     }
                     break;
+                case 'float6e2m3':
+                    for (let i = 0; i < length; i++, offset += stride) {
+                        results.push(view.getFloat6e2m3(offset));
+                    }
+                    break;
+                case 'float6e3m2':
+                    for (let i = 0; i < length; i++, offset += stride) {
+                        results.push(view.getFloat6e3m2(offset));
+                    }
+                    break;
                 case 'float8e3m4':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat8e3m4(offset));
                     }
                     break;
                 case 'float8e4m3':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat8e4m3(offset, false, false));
                     }
                     break;
                 case 'float8e4m3fn':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat8e4m3(offset, true, false));
                     }
                     break;
                 case 'float8e4m3fnuz':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat8e4m3(offset, true, true));
                     }
                     break;
                 case 'float8e4m3b11fnuz':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat8e4m3(offset, true, true, 11));
                     }
                     break;
                 case 'float8e5m2':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat8e5m2(offset, false, false));
                     }
                     break;
                 case 'float8e5m2fnuz':
-                    for (; offset < max; offset += stride) {
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat8e5m2(offset, true, true));
                     }
                     break;
                 case 'float8e8m0fnu':
-                    for (; offset < max; offset += stride) {
+                case 'float8e8m0':
+                    for (let i = 0; i < length; i++, offset += stride) {
                         results.push(view.getFloat8e8m0fnu(offset));
                     }
                     break;
@@ -1177,6 +1259,10 @@ base.Tensor = class {
                         content += x >= 32 && x <= 126 ? String.fromCharCode(x) : `\\x${x.toString(16).padStart(2, '0')}`;
                     }
                     return `${indentation}"${content}"`;
+                }
+                if (value && value.constructor === Object) {
+                    const entries = Object.entries(value).map(([key, item]) => `${key}: ${base.Tensor._stringify(item, '', indent).trimStart()}`);
+                    return `${indentation}{ ${entries.join(', ')} }`;
                 }
                 if (value && value.toString) {
                     return `${indentation}${value.toString()}`;
@@ -1382,15 +1468,19 @@ base.Metadata = class {
             'ort',
             'dnn', 'cmf',
             'gguf',
-            'hd5', 'hdf5', 'keras',
-            'tfl', 'circle', 'lite',
+            'hd5', 'hdf5',
+            'jax_export', 'jax_exported',
+            'keras',
+            'tfl', 'circle',
+            'lite', 'litertlm',
             'mlir', 'mlirbc', 'mlnet', 'mar', 'maxviz', 'meta', 'nn', 'ngf', 'hn',
             'param', 'params',
             'paddle', 'pdiparams', 'pdmodel', 'pdopt', 'pdparams', 'nb',
             'pkl', 'pickle', 'joblib', 'safetensors',
             'ptl', 't7',
             'dlc', 'uff', 'armnn', 'kann', 'kgraph', 'tosa',
-            'mnn', 'ms', 'ncnn', 'om', 'tm', 'mge', 'tmfile', 'tnnproto', 'xmodel', 'kmodel', 'rknn', 'espdl',
+            'ms', 'mindir', 'om',
+            'mnn', 'ncnn', 'tm', 'mge', 'tmfile', 'tnnproto', 'xmodel', 'kmodel', 'rknn', 'espdl',
             'tar', 'zip'
         ];
     }
