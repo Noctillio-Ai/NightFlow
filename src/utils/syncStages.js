@@ -2,6 +2,9 @@
 // The stages run in this order in doSync, so the furthest stage that has
 // logged anything is the one in progress.
 
+// Detailed lines (commands, their output, notes) don't decide a step's state.
+export const DETAIL_TYPES = new Set(["cmd", "out", "note"]);
+
 export const SYNC_STAGES = [
   { key: "workspace", title: "Prepare workspace" },
   { key: "python", title: "Set up Python environment" },
@@ -33,6 +36,7 @@ export function buildSyncSteps(logs = [], phase = "idle") {
   const perStage = SYNC_STAGES.map(() => []);
   let current = -1;
   for (const log of logs) {
+    if (DETAIL_TYPES.has(log.type)) continue;
     const s = stageOf(log.message);
     if (s < 0) continue;
     perStage[s].push(log);

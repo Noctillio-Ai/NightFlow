@@ -13,7 +13,7 @@ import {
   toggleSshConnection,
 } from "../../state/dashboard.js";
 import { currentProject } from "../../state/projects.js";
-import { buildSyncSteps, formatElapsed, SYNC_STAGES } from "../../utils/syncStages.js";
+import { buildSyncSteps, formatElapsed, SYNC_STAGES, DETAIL_TYPES } from "../../utils/syncStages.js";
 import { Dot } from "./Card.jsx";
 import { AlertIcon, CheckIcon, CopyIcon, LockIcon, RefreshIcon, XIcon } from "./icons.jsx";
 
@@ -63,9 +63,17 @@ function useTicker(on) {
 function LogView({ logs }) {
   const ref = useRef(null);
   const [copied, setCopied] = useState(false);
+  const [detailed, setDetailed] = useState(true);
+  const shown = detailed ? logs : logs.filter((l) => !DETAIL_TYPES.has(l.type));
+  // Follow new lines unless the user has scrolled up to read.
+  const stick = useRef(true);
+  const onScroll = (e) => {
+    const el = e.currentTarget;
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  };
   useEffect(() => {
-    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [logs.length]);
+    if (stick.current && ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [shown.length, detailed]);
 
   const copy = async () => {
     try {
@@ -80,18 +88,23 @@ function LogView({ logs }) {
   return (
     <div class="dash-sync-log">
       <div class="dash-sync-log-head">
-        <span>Sync log</span>
+        <span>Sync log {logs.length > 0 && <span class="dash-muted">· {shown.length.toLocaleString()} lines</span>}</span>
         {logs.length > 0 && (
-          <button class="dash-sync-log-copy" onClick={copy} title="Copy the full log">
-            {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />} {copied ? "Copied" : "Copy"}
-          </button>
+          <div class="dash-sync-log-actions">
+            <button class={`dash-sync-log-copy${detailed ? " active" : ""}`} onClick={() => setDetailed(!detailed)} aria-pressed={detailed} title="Show every command and its output">
+              Details
+            </button>
+            <button class="dash-sync-log-copy" onClick={copy} title="Copy the full log">
+              {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />} {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
         )}
       </div>
-      <div class="dash-sync-log-body" ref={ref} role="log" aria-live="polite">
+      <div class="dash-sync-log-body" ref={ref} onScroll={onScroll} role="log" aria-live="polite">
         {logs.length === 0 ? (
           <span class="dash-sync-log-empty">Messages appear here once the sync starts.</span>
         ) : (
-          logs.map((l, i) => (
+          shown.map((l, i) => (
             <div key={i} class={`dash-sync-log-line dash-sync-log-line--${l.type}`}>
               <span class="dash-sync-log-time">{l.timestamp}</span>
               <span class="dash-sync-log-msg">{l.message}</span>
@@ -127,7 +140,7 @@ export function SyncPanel() {
     if (resyncReason.value && !dashboardSyncing.value) syncDashboard();
   }, []);
 
-  const lastMessage = logs[logs.length - 1]?.message || "";
+  const lastMessage = [...logs].reverse().find((l) => !DETAIL_TYPES.has(l.type))?.message || "";
   const phase = complete ? "complete" : syncing ? "syncing" : /^Sync failed/.test(lastMessage) ? "failed" : "idle";
   // Logs restored from an earlier sync don't describe this one.
   const live = phase !== "idle";

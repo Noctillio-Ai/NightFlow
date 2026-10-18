@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use tauri::command;
 
+use crate::synclog::SyncLog;
+
 use crate::expand_tilde;
 use crate::{default_shell, home_dir};
 use crate::{StdCommandNoWindow, TokioCommandNoWindow};
@@ -179,12 +181,14 @@ pub fn find_uv() -> Option<String> {
 
 /// Ensure `uv` is installed locally; if missing, install via the official script.
 /// Returns the path to the `uv` binary.
-async fn ensure_uv_available() -> Result<String, String> {
+async fn ensure_uv_available(log: &SyncLog) -> Result<String, String> {
     if let Some(path) = find_uv() {
+        log.note(format!("Using uv at {}", path));
         return Ok(path);
     }
+    log.note("uv not found; installing it with Astral's official installer");
 
-    let install = if cfg!(windows) {
+    let (ok, tail) = if cfg!(windows) {
         // Astral's official installer (per-user, no admin). Force TLS 1.2 for
         // older Windows PowerShell defaults and hide the progress bar, which
         // otherwise slows Invoke-RestMethod down badly. Give up after 5 minutes
@@ -193,28 +197,20 @@ async fn ensure_uv_available() -> Result<String, String> {
             [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; \
             $ProgressPreference = 'SilentlyContinue'; \
             irm https://astral.sh/uv/install.ps1 | iex";
-        let run = tokio::process::Command::new("powershell")
-            .no_window()
-            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "ByPass", "-Command", script])
-            .stdin(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .output();
+        let args = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "ByPass", "-Command", script];
+        let run = log.run("powershell", &args, None);
         match tokio::time::timeout(std::time::Duration::from_secs(300), run).await {
             Ok(result) => result.map_err(|e| format!("Failed to run uv installer: {}", e))?,
             Err(_) => return Err("uv installation timed out after 5 minutes".to_string()),
         }
     } else {
-        tokio::process::Command::new("sh")
-            .no_window()
-            .args(["-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"])
-            .output()
+        log.run("sh", &["-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"], None)
             .await
             .map_err(|e| format!("Failed to run uv installer: {}", e))?
     };
 
-    if !install.status.success() {
-        let stderr = String::from_utf8_lossy(&install.stderr).to_string();
-        return Err(format!("uv installation failed: {}", stderr));
+    if !ok {
+        return Err(format!("uv installation failed: {}", tail));
     }
 
     // find_uv() re-checks PATH and known locations. On Windows the installer
@@ -224,8 +220,9 @@ async fn ensure_uv_available() -> Result<String, String> {
 }
 
 #[command]
-pub async fn ensure_uv() -> Result<UvStatus, String> {
-    let uv_bin = match ensure_uv_available().await {
+pub async fn ensure_uv(app: tauri::AppHandle) -> Result<UvStatus, String> {
+    let log = SyncLog::new(&app, None);
+    let uv_bin = match ensure_uv_available(&log).await {
         Ok(path) => path,
         Err(e) => {
             return Ok(UvStatus {
@@ -474,7 +471,9 @@ async fn get_venv_versions(venv_path: &std::path::Path) -> (Option<String>, Opti
 
     let at_ver = tokio::process::Command::new(&python)
         .no_window()
-        .args(["-c", "import autotimm; print(autotimm.__version__)"])
+        // Read the installed version from package metadata. Importing autotimm
+        // would load PyTorch and timm, which takes seconds per call.
+        .args(["-c", "from importlib.metadata import version; print(version('autotimm'))"])
         .output()
         .await
         .ok()
@@ -487,34 +486,31 @@ async fn get_venv_versions(venv_path: &std::path::Path) -> (Option<String>, Opti
 /// Reinstall the latest AutoTimm into an existing environment. Only AutoTimm
 /// is forced; its dependencies (PyTorch etc.) are upgraded only if the new
 /// version needs them, so a resync doesn't re-download gigabytes.
-async fn reinstall_autotimm(project_dir: &str, venv_path: &std::path::Path) -> Result<(), String> {
+async fn reinstall_autotimm(log: &SyncLog, project_dir: &str, venv_path: &std::path::Path) -> Result<(), String> {
     let venv_py = venv_python(venv_path).to_string_lossy().to_string();
-    let uv_bin = ensure_uv_available().await?;
+    let uv_bin = ensure_uv_available(log).await?;
 
     // Refresh the index so a just-published release is seen, then upgrade and
     // reinstall only the autotimm package.
-    let out = tokio::process::Command::new(&uv_bin)
-        .no_window()
-        .args([
-            "pip", "install", "autotimm[all]",
-            "--upgrade-package", "autotimm",
-            "--reinstall-package", "autotimm",
-            "--refresh-package", "autotimm",
-            "--python", &venv_py,
-        ])
-        .current_dir(project_dir)
-        .output()
-        .await
-        .map_err(|e| format!("could not run uv: {}", e))?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-    }
+    let (ok, tail) = log
+        .run(
+            &uv_bin,
+            &[
+                "pip", "install", "autotimm[all]",
+                "--upgrade-package", "autotimm",
+                "--reinstall-package", "autotimm",
+                "--refresh-package", "autotimm",
+                "--python", &venv_py,
+            ],
+            Some(project_dir),
+        )
+        .await?;
+    if ok { Ok(()) } else { Err(tail) }
 }
 
 #[command]
-pub async fn setup_python_env(project_path: String) -> Result<EnvSetupResult, String> {
+pub async fn setup_python_env(app: tauri::AppHandle, project_path: String) -> Result<EnvSetupResult, String> {
+    let log = SyncLog::new(&app, Some(&project_path));
     let expanded = expand_tilde(&project_path);
     let venv_path = std::path::PathBuf::from(&expanded).join(".venv");
 
@@ -522,6 +518,7 @@ pub async fn setup_python_env(project_path: String) -> Result<EnvSetupResult, St
     // every project uses the same, faster setup.
     let replacing_conda = venv_path.join("conda-meta").is_dir();
     if replacing_conda {
+        log.note(format!("Removing the old conda environment at {}", venv_path.display()));
         let _ = std::fs::remove_dir_all(&venv_path);
     }
 
@@ -529,9 +526,16 @@ pub async fn setup_python_env(project_path: String) -> Result<EnvSetupResult, St
     //    latest AutoTimm on every sync so a resync never reuses an old version.
     if venv_path.exists() {
         let detected_env_type = "uv";
+        log.note(format!("Found an existing environment at {}", venv_path.display()));
 
-        let (_, previous) = get_venv_versions(&venv_path).await;
-        let install = reinstall_autotimm(&expanded, &venv_path).await;
+        let (python_before, previous) = get_venv_versions(&venv_path).await;
+        log.note(format!(
+            "Python {} · autotimm {} currently installed",
+            python_before.as_deref().unwrap_or("?"),
+            previous.as_deref().unwrap_or("not installed"),
+        ));
+        log.note("Reinstalling the latest autotimm (dependencies upgrade only if needed)");
+        let install = reinstall_autotimm(&log, &expanded, &venv_path).await;
         let (python_version, autotimm_version) = get_venv_versions(&venv_path).await;
 
         return Ok(match (install, autotimm_version) {
@@ -576,8 +580,9 @@ pub async fn setup_python_env(project_path: String) -> Result<EnvSetupResult, St
         let _ = std::fs::remove_dir_all(&venv_path);
     }
 
+    log.note(format!("No environment yet; creating {} with uv", venv_path.display()));
     // Install uv first if it's missing (sync normally already did).
-    let uv_bin = match ensure_uv_available().await {
+    let uv_bin = match ensure_uv_available(&log).await {
         Ok(path) => path,
         Err(err) => {
             return Ok(EnvSetupResult {
@@ -593,30 +598,17 @@ pub async fn setup_python_env(project_path: String) -> Result<EnvSetupResult, St
 
     let _ = tokio::time::timeout(
         std::time::Duration::from_secs(120),
-        tokio::process::Command::new(&uv_bin)
-            .no_window()
-            .args(["python", "install", "3.12"])
-            .output(),
+        log.run(&uv_bin, &["python", "install", "3.12"], None),
     )
     .await;
 
-    let uv_args = vec![
-        "venv".to_string(),
-        ".venv".to_string(),
-        "--python".to_string(),
-        "3.12".to_string(),
-    ];
-
-    let venv_output = tokio::process::Command::new(&uv_bin)
-        .no_window()
-        .args(&uv_args)
-        .current_dir(&expanded)
-        .output()
+    let (venv_ok, venv_tail) = log
+        .run(&uv_bin, &["venv", ".venv", "--python", "3.12"], Some(&expanded))
         .await
         .map_err(|e| format!("Failed to run uv venv: {}", e))?;
 
-    if !venv_output.status.success() {
-        let stderr = String::from_utf8_lossy(&venv_output.stderr).to_string();
+    if !venv_ok {
+        let stderr = venv_tail;
         let _ = std::fs::remove_dir_all(&venv_path);
         return Ok(EnvSetupResult {
             status: "error".to_string(),
@@ -630,16 +622,18 @@ pub async fn setup_python_env(project_path: String) -> Result<EnvSetupResult, St
 
     let final_venv_py = venv_python(&venv_path);
     let final_venv_py_str = final_venv_py.to_string_lossy().to_string();
-    let install_output = tokio::process::Command::new(&uv_bin)
-        .no_window()
-        .args(["pip", "install", "--upgrade", "--refresh-package", "autotimm", "autotimm[all]", "--python", &final_venv_py_str])
-        .current_dir(&expanded)
-        .output()
+    log.note("Installing autotimm and its dependencies (PyTorch included); the first install downloads a few GB");
+    let (install_ok, install_tail) = log
+        .run(
+            &uv_bin,
+            &["pip", "install", "--upgrade", "--refresh-package", "autotimm", "autotimm[all]", "--python", &final_venv_py_str],
+            Some(&expanded),
+        )
         .await
-        .map_err(|e| format!("Failed to run pip install: {}", e))?;
+        .map_err(|e| format!("Failed to run uv pip install: {}", e))?;
 
-    if !install_output.status.success() {
-        let stderr = String::from_utf8_lossy(&install_output.stderr).to_string();
+    if !install_ok {
+        let stderr = install_tail;
         return Ok(EnvSetupResult {
             status: "error".to_string(),
             message: format!("Failed to install dependencies: {}", stderr),
@@ -667,9 +661,11 @@ pub async fn setup_python_env(project_path: String) -> Result<EnvSetupResult, St
 
 #[command]
 pub async fn ssh_setup_python_env(
+    app: tauri::AppHandle,
     ssh_command: String,
     project_path: String,
 ) -> Result<EnvSetupResult, String> {
+    let log = SyncLog::new(&app, Some(&project_path));
     let parts: Vec<String> = ssh_command.split_whitespace().map(String::from).collect();
     if parts.is_empty() {
         return Err("Empty SSH command".to_string());
@@ -686,6 +682,7 @@ pub async fn ssh_setup_python_env(
     let script = format!(
         r#"export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 cd "{path}" || exit 1
+say() {{ printf '» %s\n' "$1" >&2; }}
 ej() {{ printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' '; }}
 jout() {{
   local s="$1" m="$2" pv="$3" av="$4" w="$5"
@@ -697,19 +694,25 @@ jout() {{
 }}
 # Older NightFlow builds made conda environments; rebuild those with uv.
 REPLACED_CONDA=""
-if [ -d .venv/conda-meta ]; then rm -rf .venv; REPLACED_CONDA=1; fi
+if [ -d .venv/conda-meta ]; then say "Removing the old conda environment at $PWD/.venv"; rm -rf .venv; REPLACED_CONDA=1; fi
 if [ -d .venv ]; then
   # Keep the environment, but reinstall the latest AutoTimm on every sync.
   # Only AutoTimm is forced; dependencies upgrade only if it needs them.
   PV=$(.venv/bin/python --version 2>/dev/null | sed 's/Python //')
-  OLD_AV=$(.venv/bin/python -c "import autotimm; print(autotimm.__version__)" 2>/dev/null)
+  # Versions come from package metadata: importing autotimm loads PyTorch (slow).
+  OLD_AV=$(.venv/bin/python -c "from importlib.metadata import version; print(version('autotimm'))" 2>/dev/null)
+  say "Found an existing environment at $PWD/.venv"
+  say "Python ${{PV:-?}} · autotimm ${{OLD_AV:-not installed}} currently installed"
   if command -v uv >/dev/null 2>&1; then
-    INSTALL_ERR=$(uv pip install 'autotimm[all]' --upgrade-package autotimm --reinstall-package autotimm --refresh-package autotimm --python .venv/bin/python 2>&1)
+    say "Reinstalling the latest autotimm with $(command -v uv)"
+    echo "\$ uv pip install 'autotimm[all]' --upgrade-package autotimm --reinstall-package autotimm --refresh-package autotimm --python .venv/bin/python" >&2
+    uv pip install 'autotimm[all]' --upgrade-package autotimm --reinstall-package autotimm --refresh-package autotimm --python .venv/bin/python >&2
     RC=$?
+    INSTALL_ERR="uv pip install exited with $RC (see the sync log above)"
   else
     INSTALL_ERR="uv not found"; RC=1
   fi
-  AV=$(.venv/bin/python -c "import autotimm; print(autotimm.__version__)" 2>/dev/null)
+  AV=$(.venv/bin/python -c "from importlib.metadata import version; print(version('autotimm'))" 2>/dev/null)
   if [ -z "$AV" ]; then
     jout error "Failed to install autotimm: $INSTALL_ERR" "$PV" ""
   elif [ $RC -ne 0 ]; then
@@ -727,19 +730,21 @@ else
     jout error "uv is required to create the Python environment but was not found on the remote machine" "" ""
     exit 0
   fi
-  VENV_ERR=$(uv venv .venv --python 3.12 2>&1)
-  if [ $? -ne 0 ]; then
+  say "No environment yet; creating $PWD/.venv with $(command -v uv)"
+  echo "\$ uv venv .venv --python 3.12" >&2
+  if ! uv venv .venv --python 3.12 >&2; then
     rm -rf .venv 2>/dev/null
-    jout error "Failed to create venv: $VENV_ERR" "" ""
+    jout error "Failed to create venv (see the sync log above)" "" ""
     exit 0
   fi
-  PIP_ERR=$(uv pip install --upgrade --refresh-package autotimm 'autotimm[all]' --python .venv/bin/python 2>&1)
-  if [ $? -ne 0 ]; then
-    jout error "Failed to install dependencies: $PIP_ERR" "" ""
+  say "Installing autotimm and its dependencies (PyTorch included); the first install downloads a few GB"
+  echo "\$ uv pip install --upgrade --refresh-package autotimm 'autotimm[all]' --python .venv/bin/python" >&2
+  if ! uv pip install --upgrade --refresh-package autotimm 'autotimm[all]' --python .venv/bin/python >&2; then
+    jout error "Failed to install dependencies (see the sync log above)" "" ""
     exit 0
   fi
   PV=$(.venv/bin/python --version 2>/dev/null | sed 's/Python //')
-  AV=$(.venv/bin/python -c "import autotimm; print(autotimm.__version__)" 2>/dev/null)
+  AV=$(.venv/bin/python -c "from importlib.metadata import version; print(version('autotimm'))" 2>/dev/null)
   if [ -n "$REPLACED_CONDA" ]; then
     jout created "Replaced the old conda environment with a uv one and installed dependencies" "$PV" "$AV"
   else
@@ -757,22 +762,50 @@ fi"#,
     }
     cmd.arg(script);
     cmd.kill_on_drop(true);
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    log.note(format!("Setting up the environment over SSH ({})", parts.last().map(String::as_str).unwrap_or("remote")));
 
-    match tokio::time::timeout(std::time::Duration::from_secs(1200), cmd.output()).await {
-        Ok(Ok(output)) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if stdout.is_empty() || !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    // stdout carries the final JSON result; stderr is the live progress log.
+    let run = async {
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+        let mut child = cmd.spawn()?;
+        let mut stdout = child.stdout.take().expect("piped stdout");
+        let stderr = child.stderr.take().expect("piped stderr");
+        let progress_log = log.clone();
+        let progress = tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            let mut tail = Vec::new();
+            while let Ok(Some(line)) = lines.next_line().await {
+                progress_log.out(line.clone());
+                tail.push(line);
+                if tail.len() > 30 { tail.remove(0); }
+            }
+            tail.join("\n")
+        });
+        let mut out = Vec::new();
+        stdout.read_to_end(&mut out).await?;
+        let status = child.wait().await?;
+        let stderr_tail = progress.await.unwrap_or_default();
+        Ok::<_, std::io::Error>((status, out, stderr_tail))
+    };
+
+    match tokio::time::timeout(std::time::Duration::from_secs(1200), run).await {
+        Ok(Ok((status, out, stderr_tail))) => {
+            let stdout = String::from_utf8_lossy(&out).trim().to_string();
+            if stdout.is_empty() || !status.success() {
                 return Ok(EnvSetupResult {
                     status: "error".to_string(),
-                    message: format!("SSH env setup failed: {}", stderr),
+                    message: format!("SSH env setup failed: {}", stderr_tail),
                     python_version: None,
                     autotimm_version: None,
                     env_type: None,
                     warning: None,
                 });
             }
-            serde_json::from_str::<EnvSetupResult>(&stdout)
+            // The JSON result is the script's last stdout line.
+            let json = stdout.lines().last().unwrap_or_default();
+            serde_json::from_str::<EnvSetupResult>(json)
                 .map_err(|e| format!("Failed to parse env setup output: {} (raw: {})", e, stdout))
         }
         Ok(Err(e)) => Err(e.to_string()),

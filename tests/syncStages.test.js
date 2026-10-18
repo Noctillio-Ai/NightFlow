@@ -39,6 +39,11 @@ test('buildSyncSteps surfaces errors and warnings', () => {
   assert.deepEqual(buildSyncSteps([], 'idle').map((s) => s.state), ['pending', 'pending', 'pending', 'pending']);
 });
 
+test('buildSyncSteps ignores detailed output lines', () => {
+  const logs = [log('Local mode'), log('Setting up Python 3.12 environment with latest autotimm...'), { message: 'Checking dataset files', type: 'out', timestamp: '' }, { message: '$ uv pip install', type: 'cmd', timestamp: '' }];
+  assert.deepEqual(buildSyncSteps(logs, 'syncing').map((s) => s.state), ['done', 'active', 'pending', 'pending']);
+});
+
 test('helpers', () => {
   assert.equal(cleanMessage('✓ Dataset structure valid'), 'Dataset structure valid');
   assert.equal(formatElapsed(45_000), '45s');

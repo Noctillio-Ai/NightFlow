@@ -1,5 +1,6 @@
 import { signal, computed } from "@preact/signals";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { notify } from "../utils/notifications.js";
 import {
   projectRuns,
@@ -141,10 +142,20 @@ export function stopSync(projectId = currentProjectId.value) {
 
 // ── Sync logging helper ───────────────────────────────────────────────────────
 
+// Detailed lines: commands run ("cmd"), their output ("out") and decisions
+// ("note"). They fill the log but never move the progress bar.
+const DETAIL_TYPES = new Set(["cmd", "out", "note"]);
+const MAX_SYNC_LOG_LINES = 3000;
+
 function addSyncLog(projectId, message, type = "info") {
   const current = _getState(projectId);
   const timestamp = new Date().toLocaleTimeString();
   const newLog = { message, type, timestamp };
+
+  if (DETAIL_TYPES.has(type)) {
+    _setState(projectId, { syncLogs: [...current.syncLogs, newLog].slice(-MAX_SYNC_LOG_LINES) });
+    return;
+  }
 
   // Calculate progress based on sync milestones
   let progress = current.syncProgress;
@@ -394,6 +405,34 @@ export async function toggleSshConnection() {
 
 // ── Dashboard sync ────────────────────────────────────────────────────────────
 
+/** "850ms", "4.2s", "1m 05s" */
+function fmtDuration(ms) {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+}
+
+// The backend streams each command it runs, and every line of its output, as
+// `sync-log` events; route them into the log of the project that's syncing.
+let _syncLogListener = null;
+function ensureSyncLogListener() {
+  if (!_syncLogListener) {
+    _syncLogListener = listen("sync-log", (e) => {
+      const { project_path: path, kind, line } = e.payload || {};
+      const norm = (v) => String(v || "").replace(/[\\/]+$/, "");
+      const target = projectList.value.find(
+        (p) => _getState(p.id).syncing && (!path || norm(p.projectPath) === norm(path)),
+      );
+      if (target && line) addSyncLog(target.id, line, DETAIL_TYPES.has(kind) ? kind : "out");
+    }).catch((err) => {
+      console.warn("[sync] could not listen for detailed logs:", err);
+      _syncLogListener = null;
+    });
+  }
+  return _syncLogListener;
+}
+
 export async function syncDashboard() {
   const projectId = currentProjectId.value;
   _setState(projectId, {
@@ -404,6 +443,7 @@ export async function syncDashboard() {
     syncStartedAt: Date.now(),
   });
   addSyncLog(projectId, "Starting sync...", "info");
+  await ensureSyncLogListener();
 
   // Create abort controller for this sync
   const abortController = new AbortController();
@@ -419,7 +459,12 @@ export async function syncDashboard() {
 
   try {
     await Promise.race([doSync(projectId, abortController), syncTimeout]);
-    addSyncLog(projectId, "Sync completed successfully ✓", "success");
+    const startedAt = _getState(projectId).syncStartedAt;
+    addSyncLog(
+      projectId,
+      `Sync completed successfully ✓${startedAt ? ` in ${fmtDuration(Date.now() - startedAt)}` : ""}`,
+      "success",
+    );
     notify("Sync Complete", "Project synced successfully. Ready to train.");
 
     // Show 100% completion for 500ms
@@ -571,6 +616,7 @@ async function doSync(projectId, abortController) {
       if (abortController.signal.aborted) throw new Error("AbortError");
       try {
         addSyncLog(projectId, "Setting up Python 3.12 environment with latest autotimm...", "info");
+        const envStarted = Date.now();
         const envPromise = isSSH
           ? invoke("ssh_setup_python_env", {
             sshCommand: rawSsh.trim(),
@@ -605,7 +651,7 @@ async function doSync(projectId, abortController) {
           if (envResult.warning) addSyncLog(projectId, envResult.warning, "warning");
           addSyncLog(
             projectId,
-            `Python environment ready (${versionInfo})`,
+            `Python environment ready (${versionInfo}) in ${fmtDuration(Date.now() - envStarted)}`,
             envResult.warning ? "warning" : "success",
           );
           _setState(projectId, {
@@ -694,6 +740,26 @@ async function doSync(projectId, abortController) {
             if (validation.info?.categories) parts.push(`${validation.info.categories} categories`);
             const summary = parts.length > 0 ? ` (${parts.join(", ")})` : "";
             addSyncLog(projectId, `✓ Dataset structure valid${summary}`, "success");
+            for (const [key, value] of Object.entries(validation.info || {})) {
+              addSyncLog(projectId, `${key}: ${value}`, "note");
+            }
+            // Per-split, per-class image counts (Folder datasets).
+            if (project.datasetFormat === "Folder") {
+              try {
+                const splits = await invoke("detect_dataset_splits", { path: project.folderPath });
+                for (const split of splits?.length ? splits : [null]) {
+                  const r = await invoke("browse_dataset", {
+                    path: project.folderPath, format: "Folder", limit: 0, offset: 0,
+                    classFilter: null, imageFolder: null, search: null, split,
+                  });
+                  const counts = Object.entries(r?.class_counts || {}).sort(([a], [b]) => a.localeCompare(b));
+                  addSyncLog(projectId, `${split || "dataset"}: ${r.total.toLocaleString()} images in ${counts.length} classes`, "note");
+                  addSyncLog(projectId, counts.map(([c, n]) => `${c} ${n.toLocaleString()}`).join(" · "), "out");
+                }
+              } catch (countErr) {
+                addSyncLog(projectId, `Could not count images per class: ${countErr}`, "note");
+              }
+            }
           } else {
             for (const err of validation.errors) {
               addSyncLog(projectId, `✗ ${err}`, "error");
@@ -733,18 +799,28 @@ async function doSync(projectId, abortController) {
 
           // Sync scalars from TensorBoard/JSONL for runs that exist in the DB
           let synced = 0;
+          addSyncLog(projectId, `Found ${runIds.length} run folder(s) in ${project.projectPath}logs`, "note");
           for (const folder of runIds) {
             if (abortController.signal.aborted) throw new Error("AbortError");
             // Only process folders whose run_id matches an existing DB run
             const run = existingById.get(folder);
-            if (!run) continue;
+            if (!run) {
+              addSyncLog(projectId, `– ${folder}: not a run in this project, skipped`, "out");
+              continue;
+            }
+            const name = run.name || run.id;
             try {
               // Re-read logs for untested runs: a test may have run since the
               // scalars were first cached.
               const result = await loadRunScalars(run, run.testAcc == null);
-              if (result) synced++;
-            } catch {
-              // logs may be empty or malformed — skip
+              if (result) {
+                synced++;
+                addSyncLog(projectId, `✓ ${name}: ${Object.keys(result).length} metrics loaded`, "out");
+              } else {
+                addSyncLog(projectId, `– ${name}: no metric logs on disk`, "out");
+              }
+            } catch (err) {
+              addSyncLog(projectId, `✗ ${name}: could not read logs (${err})`, "out");
             }
           }
           addSyncLog(

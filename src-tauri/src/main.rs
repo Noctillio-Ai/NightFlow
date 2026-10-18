@@ -6,6 +6,7 @@ mod interpretation;
 mod pty;
 mod runs;
 mod ssh;
+mod synclog;
 mod system;
 mod training;
 mod updater;

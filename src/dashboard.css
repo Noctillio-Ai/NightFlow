@@ -1387,7 +1387,7 @@
 .dash-sync-log-copy:hover { color: var(--text-primary); border-color: var(--dash-inset-border); }
 
 .dash-sync-log-body {
-  max-height: 230px;
+  max-height: 340px;
   min-height: 120px;
   overflow: auto;
   padding: 10px 14px;
@@ -1402,6 +1402,13 @@
 .dash-sync-log-line--success .dash-sync-log-msg { color: var(--dash-ok); }
 .dash-sync-log-line--warning .dash-sync-log-msg { color: var(--dash-warn); }
 .dash-sync-log-line--error .dash-sync-log-msg { color: var(--dash-err); }
+/* Detailed lines: commands, their output, and notes */
+.dash-sync-log-line--cmd .dash-sync-log-msg { color: #60a5fa; font-weight: 600; }
+.dash-sync-log-line--out .dash-sync-log-msg { color: var(--text-muted); padding-left: 14px; white-space: pre-wrap; }
+.dash-sync-log-line--note .dash-sync-log-msg { color: var(--text-secondary); font-style: italic; }
+.dash-sync-log-line--note .dash-sync-log-msg::before { content: "» "; color: var(--text-muted); font-style: normal; }
+.dash-sync-log-actions { display: flex; align-items: center; gap: 4px; }
+.dash-sync-log-copy.active { color: var(--text-primary); border-color: var(--dash-inset-border); background: var(--bg-surface); }
 
 @media (max-width: 1040px) {
   .dash .dashboard-sync-card.dash-sync-card { grid-template-columns: minmax(0, 1fr); }
