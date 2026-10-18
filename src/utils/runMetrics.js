@@ -5,7 +5,7 @@
 // Structured outputs stored alongside the scalars, not curves.
 const NON_SCALAR = /(?:^|\/)(?:confusion_matrix|per_class_metrics)$/;
 // Preferred chart order; anything else follows alphabetically.
-const ORDER = ["loss", "accuracy", "acc", "f1", "precision", "recall"];
+const ORDER = ["loss", "accuracy", "acc", "map", "map_50", "map_75", "f1", "precision", "recall"];
 
 /** Points → values ordered by epoch/step, keeping the last value per step. */
 export function seriesOf(points) {
@@ -56,6 +56,8 @@ export function pairMetrics(scalars = {}) {
       if (/_step$/.test(m[2])) continue;
       const name = m[2].replace(/_epoch$/, "");
       const values = seriesOf(points);
+      // torchmetrics reports -1 for metrics it didn't compute (e.g. per-class mAP).
+      if (values.length && values.every((v) => v === -1)) continue;
       const g = group(name);
       if (values.length > g[m[1]].length) g[m[1]] = values;
     } else {

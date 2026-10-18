@@ -1,7 +1,8 @@
 import { stats } from "../../state/dashboard.js";
 import { projectRuns, filterStatus } from "../../state/experiments.js";
 import { navigate } from "../../state/router.js";
-import { formatPercent } from "../../utils/format.js";
+import { currentProject } from "../../state/projects.js";
+import { headlineFor } from "../../utils/headline.js";
 import { baseName } from "../../utils/runCurves.js";
 import { Card, Dot } from "./Card.jsx";
 import { ArrowRightIcon, ClockIcon, LineChartIcon } from "./icons.jsx";
@@ -19,6 +20,7 @@ function formatStarted(value) {
 
 /** The latest runs as a compact table; rows open the run detail view. */
 export function RecentRunsCard() {
+  const h = headlineFor(currentProject.value?.taskType);
   const all = projectRuns.value;
   const s = stats.value;
   const runs = [...all].sort((a, b) => new Date(b.created) - new Date(a.created)).slice(0, LIMIT);
@@ -62,7 +64,7 @@ export function RecentRunsCard() {
                 <th>Model</th>
                 <th>Dataset</th>
                 <th class="num">Epochs</th>
-                <th class="num">Best val acc</th>
+                <th class="num">Best val {h.short}</th>
                 <th>Status</th>
                 <th class="actions"><span class="sr-only">Actions</span></th>
               </tr>
@@ -75,7 +77,7 @@ export function RecentRunsCard() {
                   <td>{r.backbone || r.model || "—"}</td>
                   <td title={r.dataset}>{baseName(r.dataset) || "—"}</td>
                   <td class="num">{r.epochs || "—"}</td>
-                  <td class={`num strong${r.bestAcc != null && r.bestAcc === s.bestAcc ? " best" : ""}`}>{formatPercent(r.bestAcc)}</td>
+                  <td class={`num strong${r.bestAcc != null && r.bestAcc === s.bestAcc ? " best" : ""}`}>{h.format(r.bestAcc)}</td>
                   <td>
                     <span class="dash-status">
                       <Dot state={STATUS_DOT[r.status] || "idle"} />

@@ -21,6 +21,7 @@ import {
   XIcon,
 } from "../components/dashboard/icons.jsx";
 import { formatDuration, formatRelativeTime } from "../utils/format.js";
+import { headlineFor } from "../utils/headline.js";
 import { baseName } from "../utils/runCurves.js";
 import { testMetricsFromScalars } from "../utils/testMetrics.js";
 import { pairMetrics, runInsight, bestIndex, lowerIsBetter } from "../utils/runMetrics.js";
@@ -38,8 +39,9 @@ const VAL_COLOR = "#a855f7";
 
 const pct = (v) => (Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : "—");
 const num = (v) => (Number.isFinite(v) ? (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(4)) : "—");
-/** Scores in [0, 1] read as percentages; losses and the rest as numbers. */
-const isScore = (name, values) => !lowerIsBetter(name) && values.length > 0 && values.every((v) => v >= 0 && v <= 1);
+/** Scores in [0, 1] read as percentages; losses, detection mAP/mAR and the rest as numbers. */
+const isScore = (name, values) =>
+  !/^ma[pr](_|$)/.test(name) && !lowerIsBetter(name) && values.length > 0 && values.every((v) => v >= 0 && v <= 1);
 const fmtFor = (name, values) => (isScore(name, values) ? pct : num);
 /** Shorter labels for the y axis. */
 const tickFor = (name, values) =>
@@ -404,7 +406,9 @@ export function RunDetailView() {
 
   // Headline numbers
   const loss = metrics.find((m) => m.name === "loss");
-  const acc = metrics.find((m) => m.name === "accuracy" || m.name === "acc");
+  // Headline score: accuracy, or mAP (val/map) for detection.
+  const h = headlineFor(run.taskType);
+  const acc = metrics.find((m) => (h.percent ? m.name === "accuracy" || m.name === "acc" : m.name === "map"));
   const valAcc = acc?.val || [];
   const bestAccIdx = bestIndex(valAcc, false);
   const bestAcc = Number.isFinite(run.bestAcc) ? run.bestAcc : valAcc[bestAccIdx];
@@ -479,14 +483,14 @@ export function RunDetailView() {
         <Kpi
           highlight
           icon={<TrophyIcon size={20} />}
-          label="Best validation accuracy"
-          value={pct(bestAcc)}
-          detail={bestAccIdx >= 0 ? `Epoch ${bestAccIdx + 1} of ${valAcc.length}` : "No validation accuracy logged"}
+          label={`Best validation ${h.name}`}
+          value={h.format(bestAcc)}
+          detail={bestAccIdx >= 0 ? `Epoch ${bestAccIdx + 1} of ${valAcc.length}` : `No validation ${h.name} logged`}
         />
         <Kpi
           icon={<CheckCircleIcon size={20} />}
-          label="Test accuracy"
-          value={pct(run.testAcc)}
+          label={`Test ${h.name}`}
+          value={h.format(run.testAcc)}
           detail={Number.isFinite(run.testAcc) ? "On the held-out test set" : "Not tested yet"}
         />
         <Kpi

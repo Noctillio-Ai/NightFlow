@@ -12,7 +12,7 @@ import {
   TrophyIcon,
   XIcon,
 } from "../components/dashboard/icons.jsx";
-import { formatPercent, formatRelativeTime } from "../utils/format.js";
+import { formatRelativeTime } from "../utils/format.js";
 import { formatLabel } from "../utils/hparams.js";
 import { lowerIsBetter } from "../utils/runMetrics.js";
 import {
@@ -27,6 +27,7 @@ import {
   formatDelta,
   comparisonMarkdown,
 } from "../utils/compareRuns.js";
+import { headlineFor } from "../utils/headline.js";
 
 const STATUS = {
   completed: { label: "Completed", tone: "ok" },
@@ -52,7 +53,10 @@ const ArrowDownIcon = () => (
 );
 
 /** Scores in [0, 1] read as percentages; losses and the rest as numbers. */
-const kindOf = (name, values) => (!lowerIsBetter(name) && values.length > 0 && values.every((v) => v >= 0 && v <= 1) ? "score" : "number");
+// Detection mAP/mAR (map, map_50, mar_100, …) read as 0.452, not as a percentage.
+const kindOf = (name, values) =>
+  /^ma[pr](_|$)/.test(name) ? "map"
+    : !lowerIsBetter(name) && values.length > 0 && values.every((v) => v >= 0 && v <= 1) ? "score" : "number";
 const tickFor = (kind) => (kind === "score" ? (v) => `${Math.round(v * 100)}%` : (v) => (Math.abs(v) >= 100 ? v.toFixed(0) : String(+v.toFixed(2))));
 const runName = (r) => r.name || r.id;
 
@@ -92,7 +96,7 @@ function RunPicker({ candidates, onPick, onClose, align = "right" }) {
             <span class="cmp-picker-meta">
               {STATUS[r.status]?.label || r.status}
               {r.created && ` · ${formatRelativeTime(r.created)}`}
-              {Number.isFinite(r.bestAcc) && ` · val ${formatPercent(r.bestAcc)}`}
+              {Number.isFinite(r.bestAcc) && ` · val ${headlineFor(r.taskType).format(r.bestAcc)}`}
             </span>
           </button>
         ))
@@ -242,7 +246,7 @@ function BarsCard({ name, runs, colors, perRun }) {
   const lower = lowerIsBetter(name);
   const lead = leader(values, lower);
   const max = Math.max(...present.map((i) => Math.abs(values[i])), 1e-9);
-  const scale = kind === "score" ? 1 : max;
+  const scale = kind === "score" || kind === "map" ? 1 : max;
 
   return (
     <section class="rd-chart cmp-chart">

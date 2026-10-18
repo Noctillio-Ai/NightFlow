@@ -6,6 +6,7 @@ import { addRun, updateRun, allRuns, generateRunName, resolveBackboneName } from
 import { processQueue } from "./queue.js";
 import { initNotifications, notify } from "../utils/notifications.js";
 import { pickTestAcc, toTestOnlyCommand, commandSteps } from "../utils/testMetrics.js";
+import { headlineFor, pickTag } from "../utils/headline.js";
 import { syncConfig } from "./dashboard.js";
 
 // Alias for backward compat within this file
@@ -51,6 +52,13 @@ function _set(projectId, updates) {
     ..._trainingState.value,
     [projectId]: { ...current, ...updates },
   };
+}
+
+/** Headline metric (accuracy, or mAP for detection) of a run, with its task type. */
+function _headline(projectId, runId) {
+  const taskType = allRuns.value.find((r) => r.id === runId)?.taskType
+    || projectList.value.find((p) => String(p.id) === String(projectId))?.taskType;
+  return { ...headlineFor(taskType), taskType };
 }
 
 // ── Computed signals for active project ──────────────────────────────────────
@@ -300,7 +308,8 @@ function _processEvent(session_id, data) {
 
     case "testing_complete": {
       const testMetrics = data.metrics ?? {};
-      const testAcc = pickTestAcc(testMetrics);
+      const headline = _headline(session_id, state.runId);
+      const testAcc = pickTestAcc(testMetrics, headline.taskType);
 
       // Start from the run's saved scalars so a test-only run (whose live
       // state has no train/val history) doesn't wipe the run's curves.
@@ -348,7 +357,7 @@ function _processEvent(session_id, data) {
       _notify(
         "Testing Complete",
         testAcc != null
-          ? `Test accuracy: ${(testAcc * 100).toFixed(1)}%`
+          ? `Test ${headline.name}: ${headline.format(testAcc)}`
           : "Model evaluation finished.",
       );
       break;
@@ -419,7 +428,7 @@ function _processEvent(session_id, data) {
     case "validation_end": {
       const metrics = data.metrics ?? {};
       const epoch = data.epoch ?? state.epoch;
-      const acc = metrics["val/accuracy"] ?? metrics["val/acc"] ?? null;
+      const acc = pickTag(metrics, _headline(session_id, state.runId).valTags);
       const accCurve = [..._get(session_id).accCurve];
       if (acc != null) accCurve.push(acc);
 
@@ -474,7 +483,7 @@ function _processEvent(session_id, data) {
         };
         if (Object.keys(state.testMetrics).length > 0) {
           finalUpdate.testMetrics = state.testMetrics;
-          const tAcc = pickTestAcc(state.testMetrics);
+          const tAcc = pickTestAcc(state.testMetrics, _headline(session_id, state.runId).taskType);
           if (tAcc != null) finalUpdate.testAcc = tAcc;
         }
         updateRun(state.runId, finalUpdate);
@@ -494,13 +503,12 @@ function _processEvent(session_id, data) {
       }
 
       // Send OS notification
-      const bestAcc = state.accCurve.length > 0
-        ? (Math.max(...state.accCurve) * 100).toFixed(1) + "%"
-        : null;
+      const headline = _headline(session_id, state.runId);
+      const bestAcc = state.accCurve.length > 0 ? headline.format(Math.max(...state.accCurve)) : null;
       _notify(
         "Training Complete",
         bestAcc
-          ? `Run finished with best accuracy: ${bestAcc}`
+          ? `Run finished with best ${headline.name}: ${bestAcc}`
           : "Training finished successfully.",
       );
 

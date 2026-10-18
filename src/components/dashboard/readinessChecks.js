@@ -56,6 +56,18 @@ export function collectChecks(project) {
   } else if (project.folderPath) {
     pathCheck("folderPath", "Dataset", project.folderPath);
   }
+  if (status.testSet === false) {
+    checks.push({
+      key: "testSet",
+      kind: "path",
+      label: "Test",
+      value: "No test set found; training skips the test step",
+      primary: "No test set",
+      detail: "Test step skipped",
+      tag: "Skipped",
+      state: "idle",
+    });
+  }
 
   if (validation && !splitFiles) {
     const info = validation.info || {};

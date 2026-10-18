@@ -9,6 +9,7 @@ import {
   ChevronRightIcon,
   CopyIcon,
   CheckIcon,
+  CropIcon,
   SlidersIcon,
   XIcon,
 } from "../components/dashboard/icons.jsx";
@@ -20,6 +21,11 @@ const DENSITIES = ["auto", 4, 5, 6, 7, 8];
 const SPLIT_LABELS = { train: "Train", val: "Validation", valid: "Validation", validation: "Validation", test: "Test" };
 const splitLabel = (s) => SPLIT_LABELS[s] || s.charAt(0).toUpperCase() + s.slice(1);
 
+/** Label the backend gives COCO images without annotated objects. */
+const NO_OBJECTS = "no objects";
+const NO_OBJECTS_COLOR = "#8b8b93";
+const displayClass = (c) => (c === NO_OBJECTS ? "No objects" : c);
+
 function extractFilename(filePath) {
   if (!filePath) return "";
   const parts = filePath.replace(/\\/g, "/").split("/");
@@ -28,6 +34,65 @@ function extractFilename(filePath) {
 
 /** Stable per-class colour from the class's position in the sorted list. */
 const classColor = (index) => `hsl(${(index * 137.508) % 360} 65% 58%)`;
+
+/** An image's objects grouped by category, most frequent first. */
+function objectGroups(objects) {
+  const counts = new Map();
+  for (const o of objects || []) counts.set(o.label, (counts.get(o.label) || 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+/** Pixel size the boxes refer to: from the annotations, else the loaded image. */
+function useImageSize(image) {
+  const [natural, setNatural] = useState(null);
+  const size = image.width && image.height
+    ? [image.width, image.height]
+    : natural?.path === image.path ? natural.size : null;
+  const onLoad = (e) => {
+    const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+    if (w && h) setNatural({ path: image.path, size: [w, h] });
+  };
+  return [size, onLoad];
+}
+
+/** Thumbnail with its boxes drawn over it; the boxes follow the image's object-fit: cover. */
+function Thumb({ image, showBoxes, colorOf, alt }) {
+  const [size, onLoad] = useImageSize(image);
+  const objects = showBoxes && size ? image.objects || [] : [];
+  return (
+    <>
+      <img src={convertFileSrc(image.path)} alt={alt} loading="lazy" onLoad={onLoad} />
+      {objects.length > 0 && (
+        <svg class="db-boxes" viewBox={`0 0 ${size[0]} ${size[1]}`} preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          {objects.map((o, i) => (
+            <rect key={i} x={o.bbox[0]} y={o.bbox[1]} width={o.bbox[2]} height={o.bbox[3]} style={{ "--c": colorOf(o.label) }} vector-effect="non-scaling-stroke" />
+          ))}
+        </svg>
+      )}
+    </>
+  );
+}
+
+/** Category chips for a card or row: the most frequent categories, then "+N". */
+function ObjectChips({ objects, colorOf, max = 2 }) {
+  const groups = objectGroups(objects);
+  if (!groups.length) return <span class="db-chips"><span class="db-chip db-chip--empty">No objects</span></span>;
+  // Show `max` chips only when that's all of them; otherwise leave room for "+N".
+  const shown = groups.length <= max ? groups.length : max - 1;
+  const rest = groups.length - shown;
+  return (
+    <span class="db-chips">
+      {groups.slice(0, shown).map(([label, n]) => (
+        <span key={label} class="db-chip">
+          <span class="db-dot" style={{ background: colorOf(label) }} />
+          <span class="db-chip-name">{label}</span>
+          {n > 1 && <span class="db-chip-n">×{n}</span>}
+        </span>
+      ))}
+      {rest > 0 && <span class="db-chip db-chip--more">+{rest}</span>}
+    </span>
+  );
+}
 
 /** How even the class sizes are: largest class vs smallest. */
 function classBalance(counts) {
@@ -102,8 +167,14 @@ function Pagination({ offset, total, onPage }) {
   );
 }
 
-function Lightbox({ image, color, position, total, onClose, onPrev, onNext, hasPrev, hasNext }) {
+function Lightbox({ image, color, colorOf, detection, showBoxes, onToggleBoxes, position, total, onClose, onPrev, onNext, hasPrev, hasNext }) {
   const [copied, setCopied] = useState(false);
+  const [size, onSizeLoad] = useImageSize(image);
+  // Hovered box index or category name; everything else dims.
+  const [focus, setFocus] = useState(null);
+  const objects = image.objects || [];
+  const groups = objectGroups(objects);
+  const focused = (o, i) => focus == null || focus === i || focus === o.label;
   // Tiny images (e.g. 32×32 CIFAR) are scaled up; keep their pixels crisp.
   const [tinyPath, setTinyPath] = useState(null);
   const tiny = tinyPath === image.path;
@@ -119,23 +190,77 @@ function Lightbox({ image, color, position, total, onClose, onPrev, onNext, hasP
       <button class="db-lightbox-nav db-lightbox-nav--prev" disabled={!hasPrev} onClick={(e) => { e.stopPropagation(); onPrev(); }} aria-label="Previous image" title="Previous (←)">‹</button>
       <figure class="db-lightbox-body" onClick={(e) => e.stopPropagation()}>
         <div class="db-lightbox-frame">
-          <img
-            src={convertFileSrc(image.path)}
-            alt={image.label}
-            class={tiny ? "db-pixelated" : undefined}
-            onLoad={(e) => {
-              const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
-              setTinyPath(Math.max(w, h) <= 128 ? image.path : null);
-            }}
-          />
+          {(() => {
+            const img = (
+              <img
+                src={convertFileSrc(image.path)}
+                alt={image.label}
+                class={tiny ? "db-pixelated" : undefined}
+                onLoad={(e) => {
+                  const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+                  setTinyPath(Math.max(w, h) <= 128 ? image.path : null);
+                  onSizeLoad(e);
+                }}
+              />
+            );
+            if (!detection || !size) return img;
+            // The stage takes the image's exact aspect ratio, so boxes can be placed in percentages.
+            const [w, h] = size;
+            return (
+              <div class="db-stage" style={{ "--ar": w / h }} onMouseLeave={() => setFocus(null)}>
+                {img}
+                {showBoxes && objects.map((o, i) => {
+                  const [x, y, bw, bh] = o.bbox;
+                  return (
+                    <div
+                      key={i}
+                      class={`db-box${focused(o, i) ? "" : " db-box--dim"}${focus === i ? " db-box--hot" : ""}${y / h < 0.07 ? " db-box--inset" : ""}`}
+                      style={{ left: `${(x / w) * 100}%`, top: `${(y / h) * 100}%`, width: `${(bw / w) * 100}%`, height: `${(bh / h) * 100}%`, "--c": colorOf(o.label) }}
+                      onMouseEnter={() => setFocus(i)}
+                    >
+                      <span class="db-box-tag">{o.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
         <figcaption>
           <div class="db-lightbox-title">
-            <span class="db-dot" style={{ background: color }} />
-            <strong>{image.label}</strong>
+            {detection ? (
+              <strong>{objects.length.toLocaleString()} {objects.length === 1 ? "object" : "objects"}</strong>
+            ) : (
+              <>
+                <span class="db-dot" style={{ background: color }} />
+                <strong>{image.label}</strong>
+              </>
+            )}
             <span class="db-lightbox-name">{extractFilename(image.path)}</span>
             <span class="db-lightbox-pos">{position.toLocaleString()} of {total.toLocaleString()}</span>
           </div>
+          {detection && (
+            <div class="db-lightbox-objects">
+              {groups.map(([label, n]) => (
+                <span
+                  key={label}
+                  class={`db-chip db-chip--dark${focus === label ? " active" : ""}`}
+                  onMouseEnter={() => setFocus(label)}
+                  onMouseLeave={() => setFocus(null)}
+                >
+                  <span class="db-dot" style={{ background: colorOf(label) }} />
+                  <span class="db-chip-name">{label}</span>
+                  <span class="db-chip-n">×{n}</span>
+                </span>
+              ))}
+              {!groups.length && <span class="db-chip db-chip--dark db-chip--empty">No annotated objects</span>}
+              {groups.length > 0 && (
+                <button class={`db-lightbox-copy db-lightbox-boxes${showBoxes ? " active" : ""}`} onClick={onToggleBoxes} aria-pressed={showBoxes} title="Show or hide boxes (B)">
+                  <CropIcon size={13} /> {showBoxes ? "Hide boxes" : "Show boxes"}
+                </button>
+              )}
+            </div>
+          )}
           <div class="db-lightbox-path">
             <code title={image.path}><bdi>{image.path}</bdi></code>
             <button class="db-lightbox-copy" onClick={copyPath} title="Copy file path">
@@ -167,6 +292,7 @@ export function DatasetBrowserView() {
   const [showAllClasses, setShowAllClasses] = useState(false);
   const [viewMode, setViewMode] = usePref("nf-dataset-view", "grid");
   const [density, setDensity] = usePref("nf-dataset-density", "auto");
+  const [showBoxes, setShowBoxes] = usePref("nf-dataset-boxes", true);
   const searchRef = useRef(null);
   const scrollRef = useRef(null); // the image area — the only part that scrolls
 
@@ -182,10 +308,10 @@ export function DatasetBrowserView() {
       setDetectedSplits([]);
       return;
     }
-    invoke("detect_dataset_splits", { path: folderPath })
+    invoke("detect_dataset_splits", { path: folderPath, format: datasetFormat })
       .then((splits) => setDetectedSplits(splits || []))
       .catch(() => setDetectedSplits([]));
-  }, [folderPath, isCsvOrJsonl]);
+  }, [folderPath, isCsvOrJsonl, datasetFormat]);
 
   // Build available splits
   let availableSplits = [];
@@ -227,7 +353,7 @@ export function DatasetBrowserView() {
     Promise.all(
       splits.map((s) =>
         invoke("browse_dataset", browseArgs(s, { limit: 0, offset: 0 }))
-          .then((r) => [s, { total: r.total, class_counts: r.class_counts || {} }])
+          .then((r) => [s, { total: r.total, class_counts: r.class_counts || {}, objects: r.objects || null }])
           .catch(() => [s, null]),
       ),
     ).then((entries) => {
@@ -302,6 +428,7 @@ export function DatasetBrowserView() {
         if (e.key === "Escape") setLightboxIdx(null);
         else if (e.key === "ArrowRight") stepLightbox(1);
         else if (e.key === "ArrowLeft") stepLightbox(-1);
+        else if ((e.key === "b" || e.key === "B") && !typing) setShowBoxes(!showBoxes);
         return;
       }
       if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey) {
@@ -311,7 +438,7 @@ export function DatasetBrowserView() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [lightboxIdx, stepLightbox]);
+  }, [lightboxIdx, stepLightbox, showBoxes]);
 
   const toggleClass = useCallback((className) => {
     setSelectedClasses((prev) => {
@@ -361,18 +488,26 @@ export function DatasetBrowserView() {
 
   const stats = splitStats[effectiveSplit];
   const classCounts = stats?.class_counts || data?.class_counts || {};
+  // Annotated (COCO) datasets: objects per category, rather than images per class.
+  const objectStats = stats?.objects || data?.objects || null;
+  const detection = !!objectStats;
+  const barCounts = detection ? objectStats.counts : classCounts;
+  const totalObjects = detection ? Object.values(objectStats.counts).reduce((s, n) => s + n, 0) : 0;
+  const [unitOne, unitMany] = detection ? ["category", "categories"] : ["class", "classes"];
+  const unit = (n) => (n === 1 ? unitOne : unitMany);
   const classNames = Object.keys(classCounts).sort();
-  const colorOf = (name) => classColor(Math.max(0, classNames.indexOf(name)));
-  const maxCount = Math.max(1, ...Object.values(classCounts));
+  const colorOf = (name) => (name === NO_OBJECTS ? NO_OBJECTS_COLOR : classColor(Math.max(0, classNames.indexOf(name))));
+  const maxCount = Math.max(1, ...Object.values(barCounts));
   const splitTotal = stats?.total ?? Object.values(classCounts).reduce((s, n) => s + n, 0);
-  const balance = classBalance(classCounts);
+  const balance = classBalance(barCounts);
   const visibleClasses = showAllClasses ? classNames : classNames.slice(0, CLASS_PREVIEW);
   const filtering = selectedClasses.size > 0 || !!searchQuery;
   const filterLabel = selectedClasses.size === 1
-    ? [...selectedClasses][0]
+    ? displayClass([...selectedClasses][0])
     : selectedClasses.size > 1
-      ? `${selectedClasses.size} classes`
-      : "All classes";
+      ? `${selectedClasses.size} ${unitMany}`
+      : `All ${unitMany}`;
+  const fmtObjects = (n) => `${n.toLocaleString()} ${n === 1 ? "object" : "objects"}`;
   const lightboxImage = lightboxIdx != null ? images[lightboxIdx] : null;
   const gridStyle = density === "auto" ? undefined : { "--db-cols": density };
 
@@ -383,7 +518,13 @@ export function DatasetBrowserView() {
         <div class="db-summary">
           <span><strong>{splitTotal.toLocaleString()}</strong> images</span>
           <span class="db-sep" aria-hidden="true" />
-          <span><strong>{classNames.length.toLocaleString()}</strong> {classNames.length === 1 ? "class" : "classes"}</span>
+          {detection && (
+            <>
+              <span><strong>{totalObjects.toLocaleString()}</strong> {totalObjects === 1 ? "object" : "objects"}</span>
+              <span class="db-sep" aria-hidden="true" />
+            </>
+          )}
+          <span><strong>{classNames.length.toLocaleString()}</strong> {unit(classNames.length)}</span>
           <span class="db-sep" aria-hidden="true" />
           <span class="db-muted">{datasetFormat} dataset</span>
         </div>
@@ -435,11 +576,26 @@ export function DatasetBrowserView() {
               <h3 class="db-card-title">Dataset health</h3>
               <dl class="db-health">
                 <div><dt>Total images</dt><dd>{splitTotal.toLocaleString()}</dd></div>
-                <div><dt>Classes</dt><dd>{classNames.length.toLocaleString()}</dd></div>
-                <div><dt>Avg per class</dt><dd>{Math.round(Object.values(classCounts).reduce((s, n) => s + n, 0) / classNames.length).toLocaleString()}</dd></div>
+                {detection ? (
+                  <>
+                    <div><dt>Objects</dt><dd>{totalObjects.toLocaleString()}</dd></div>
+                    <div><dt>Avg objects / image</dt><dd>{splitTotal ? (totalObjects / splitTotal).toFixed(1) : "—"}</dd></div>
+                    <div title="Images with no annotated objects (background images)">
+                      <dt>Without objects</dt>
+                      <dd>{objectStats.empty_images.toLocaleString()}{splitTotal > 0 && <span class="db-health-pct"> · {Math.round((objectStats.empty_images / splitTotal) * 100)}%</span>}</dd>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div><dt>Classes</dt><dd>{classNames.length.toLocaleString()}</dd></div>
+                    <div><dt>Avg per class</dt><dd>{Math.round(Object.values(classCounts).reduce((s, n) => s + n, 0) / classNames.length).toLocaleString()}</dd></div>
+                  </>
+                )}
                 {balance && (
-                  <div title={`The largest class has ${balance.ratio.toFixed(1)}× the images of the smallest`}>
-                    <dt>Class balance</dt>
+                  <div title={detection
+                    ? `The most common category has ${balance.ratio.toFixed(1)}× the objects of the rarest`
+                    : `The largest class has ${balance.ratio.toFixed(1)}× the images of the smallest`}>
+                    <dt>{detection ? "Category balance" : "Class balance"}</dt>
                     <dd class={`db-balance db-balance--${balance.state}`}><span class="dash-dot" />{balance.label}</dd>
                   </div>
                 )}
@@ -448,7 +604,7 @@ export function DatasetBrowserView() {
 
             <section class="db-card db-classes">
               <div class="db-card-head">
-                <h3 class="db-card-title">Classes</h3>
+                <h3 class="db-card-title">{detection ? "Categories" : "Classes"}</h3>
                 {selectedClasses.size > 0 && (
                   <button class="db-link" onClick={() => { setSelectedClasses(new Set()); setOffset(0); }}>
                     Clear ({selectedClasses.size})
@@ -458,24 +614,48 @@ export function DatasetBrowserView() {
               <ul>
                 {visibleClasses.map((c) => {
                   const active = selectedClasses.has(c);
+                  const n = barCounts[c] || 0;
+                  const imgs = classCounts[c] || 0;
                   return (
                     <li key={c}>
-                      <button class={`db-class${active ? " active" : ""}`} onClick={() => toggleClass(c)} aria-pressed={active} title={`Show only ${c}`}>
+                      <button
+                        class={`db-class${active ? " active" : ""}`}
+                        onClick={() => toggleClass(c)}
+                        aria-pressed={active}
+                        title={detection ? `${fmtObjects(n)} in ${imgs.toLocaleString()} ${imgs === 1 ? "image" : "images"} — show only ${c}` : `Show only ${c}`}
+                      >
                         <span class="db-dot" style={{ background: colorOf(c) }} />
                         <span class="db-class-name">{c}</span>
-                        <span class="db-class-count">{(classCounts[c] || 0).toLocaleString()}</span>
+                        <span class="db-class-count">{n.toLocaleString()}</span>
+                        {detection && <span class="db-class-sub">{imgs.toLocaleString()} {imgs === 1 ? "image" : "images"}</span>}
                         <span class="db-class-bar" aria-hidden="true">
-                          <span style={{ width: `${((classCounts[c] || 0) / maxCount) * 100}%`, background: colorOf(c) }} />
+                          <span style={{ width: `${(n / maxCount) * 100}%`, background: colorOf(c) }} />
                         </span>
                       </button>
                     </li>
                   );
                 })}
               </ul>
+              {detection && (
+                <p class="db-classes-note">Counts are objects; bars compare categories.</p>
+              )}
               {classNames.length > CLASS_PREVIEW && (
                 <button class="db-showall" onClick={() => setShowAllClasses(!showAllClasses)}>
-                  {showAllClasses ? "Show fewer classes" : `Show all ${classNames.length} classes`}
+                  {showAllClasses ? `Show fewer ${unitMany}` : `Show all ${classNames.length} ${unitMany}`}
                   <span class={showAllClasses ? "db-chev-up" : undefined}>{showAllClasses ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}</span>
+                </button>
+              )}
+              {detection && objectStats.empty_images > 0 && (
+                <button
+                  class={`db-class db-class--empty${selectedClasses.has(NO_OBJECTS) ? " active" : ""}`}
+                  onClick={() => toggleClass(NO_OBJECTS)}
+                  aria-pressed={selectedClasses.has(NO_OBJECTS)}
+                  title="Show only images without annotated objects"
+                >
+                  <span class="db-dot" style={{ background: NO_OBJECTS_COLOR }} />
+                  <span class="db-class-name">No objects</span>
+                  <span class="db-class-count">{objectStats.empty_images.toLocaleString()}</span>
+                  <span class="db-class-sub">background images</span>
                 </button>
               )}
             </section>
@@ -490,7 +670,7 @@ export function DatasetBrowserView() {
               <input
                 ref={searchRef}
                 type="text"
-                placeholder="Search filenames or labels…"
+                placeholder={detection ? "Search filenames or categories…" : "Search filenames or labels…"}
                 value={searchInput}
                 disabled={invalid}
                 onInput={(e) => { setSearchInput(e.target.value); setOffset(0); }}
@@ -503,6 +683,11 @@ export function DatasetBrowserView() {
                 <kbd class="db-kbd">/</kbd>
               )}
             </label>
+            {detection && (
+              <button class={`db-toggle${showBoxes ? " active" : ""}`} onClick={() => setShowBoxes(!showBoxes)} aria-pressed={showBoxes} title="Show or hide bounding boxes">
+                <CropIcon size={15} /> Boxes
+              </button>
+            )}
             {viewMode === "grid" && (
               <label class="db-select">
                 <span class="sr-only">Images per row</span>
@@ -518,7 +703,7 @@ export function DatasetBrowserView() {
             <span>
               <strong>{filterLabel}</strong>
               {searchQuery && <> matching “{searchQuery}”</>}
-              <span class="db-muted"> · {total.toLocaleString()} {total === 1 ? "image" : "images"}{total > 0 && ` · ${(offset + 1).toLocaleString()}–${Math.min(offset + PAGE_SIZE, total).toLocaleString()} shown`}</span>
+              <span class="db-muted"> · {total.toLocaleString()} {total === 1 ? "image" : "images"}{detection && data?.objects && ` · ${fmtObjects(data.objects.matched)}`}{total > 0 && ` · ${(offset + 1).toLocaleString()}–${Math.min(offset + PAGE_SIZE, total).toLocaleString()} shown`}</span>
             </span>
             {filtering && <button class="db-link" onClick={clearFilters}>Clear filters</button>}
           </div>
@@ -533,7 +718,7 @@ export function DatasetBrowserView() {
                 <div class="db-empty">
                   <strong>No images</strong>
                   <span>
-                    {searchQuery ? `Nothing matches “${searchQuery}”.` : selectedClasses.size > 0 ? "No images in the selected classes." : "No images were found in this dataset."}
+                    {searchQuery ? `Nothing matches “${searchQuery}”.` : selectedClasses.size > 0 ? `No images in the selected ${unitMany}.` : "No images were found in this dataset."}
                   </span>
                   {filtering && <button class="dash-btn dash-btn--quiet" onClick={clearFilters}>Clear filters</button>}
                 </div>
@@ -542,10 +727,12 @@ export function DatasetBrowserView() {
                   {images.map((img, i) => {
                     const filename = extractFilename(img.path);
                     return (
-                      <button key={img.path} class="db-card-img" onClick={() => setLightboxIdx(i)} title={`${img.label} — ${filename}`}>
-                        <span class="db-thumb"><img src={convertFileSrc(img.path)} alt={img.label} loading="lazy" /></span>
+                      <button key={img.path} class="db-card-img" onClick={() => setLightboxIdx(i)} title={`${displayClass(img.label)} — ${filename}`}>
+                        <span class="db-thumb"><Thumb image={img} showBoxes={detection && showBoxes} colorOf={colorOf} alt={img.label} /></span>
                         <span class="db-card-meta">
-                          <span class="db-card-label"><span class="db-dot" style={{ background: colorOf(img.label) }} />{img.label}</span>
+                          {detection
+                            ? <ObjectChips objects={img.objects} colorOf={colorOf} />
+                            : <span class="db-card-label"><span class="db-dot" style={{ background: colorOf(img.label) }} />{img.label}</span>}
                           <span class="db-card-file">{filename}</span>
                         </span>
                       </button>
@@ -555,10 +742,12 @@ export function DatasetBrowserView() {
               ) : (
                 <div class={`db-list${loading ? " db-loading" : ""}`} role="list">
                   {images.map((img, i) => (
-                    <button key={img.path} class="db-row" role="listitem" onClick={() => setLightboxIdx(i)}>
+                    <button key={img.path} class={`db-row${detection ? " db-row--objects" : ""}`} role="listitem" onClick={() => setLightboxIdx(i)}>
                       <span class="db-row-n">{(offset + i + 1).toLocaleString()}</span>
-                      <span class="db-row-thumb"><img src={convertFileSrc(img.path)} alt="" loading="lazy" /></span>
-                      <span class="db-card-label"><span class="db-dot" style={{ background: colorOf(img.label) }} />{img.label}</span>
+                      <span class="db-row-thumb"><Thumb image={img} showBoxes={detection && showBoxes} colorOf={colorOf} alt="" /></span>
+                      {detection
+                        ? <ObjectChips objects={img.objects} colorOf={colorOf} max={4} />
+                        : <span class="db-card-label"><span class="db-dot" style={{ background: colorOf(img.label) }} />{img.label}</span>}
                       <span class="db-row-file">{extractFilename(img.path)}</span>
                       <span class="db-row-path" title={img.path}><bdi>{img.path}</bdi></span>
                     </button>
@@ -576,6 +765,10 @@ export function DatasetBrowserView() {
         <Lightbox
           image={lightboxImage}
           color={colorOf(lightboxImage.label)}
+          colorOf={colorOf}
+          detection={detection}
+          showBoxes={showBoxes}
+          onToggleBoxes={() => setShowBoxes(!showBoxes)}
           position={offset + lightboxIdx + 1}
           total={total}
           onClose={() => setLightboxIdx(null)}

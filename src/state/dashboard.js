@@ -8,10 +8,11 @@ import {
   allRuns,
   loadRunScalars,
 } from "./experiments.js";
-import { currentProject, currentProjectId, projectList } from "./projects.js";
+import { currentProject, currentProjectId, projectList, updateProject } from "./projects.js";
 import { navigate, currentPage } from "./router.js";
 import { saveSyncMetadata, getSyncMetadata } from "../db/database.js";
 import { buildConfigYaml } from "../utils/configBuilder.js";
+import { detectTestSet } from "../utils/testSet.js";
 import { getTrainingRunId, cleanupTrainingState } from "./training.js";
 
 // ── Per-project SSH state ─────────────────────────────────────────────────────
@@ -678,6 +679,7 @@ async function doSync(projectId, abortController) {
         trainPath: null,
         valPath: null,
         testPath: null,
+        testSet: null, // whether a test split exists; training skips the test step without one
       };
       const pathsToCheck = [];
       if (project.folderPath)
@@ -715,6 +717,14 @@ async function doSync(projectId, abortController) {
           }),
         );
       }
+      status.testSet = await detectTestSet(project, (path) => isSSH
+        ? invoke("ssh_check_path", { sshCommand: rawSsh.trim(), path })
+        : invoke("check_path_exists", { path }));
+      addSyncLog(
+        projectId,
+        status.testSet ? "✓ Test set found" : "No test set found; training will skip the test step",
+        status.testSet ? "success" : "note",
+      );
       datasetPathStatus.value = status;
 
       // Validate folder structure (only for folder-based formats on localhost)
@@ -740,6 +750,11 @@ async function doSync(projectId, abortController) {
             if (validation.info?.categories) parts.push(`${validation.info.categories} categories`);
             const summary = parts.length > 0 ? ` (${parts.join(", ")})` : "";
             addSyncLog(projectId, `✓ Dataset structure valid${summary}`, "success");
+            // Detection takes its class count from the annotation categories.
+            const categories = Number(validation.info?.categories);
+            if (project.taskType === "Object Detection" && categories > 0 && Number(project.numClasses) !== categories) {
+              await updateProject(projectId, { numClasses: categories });
+            }
             for (const [key, value] of Object.entries(validation.info || {})) {
               addSyncLog(projectId, `${key}: ${value}`, "note");
             }

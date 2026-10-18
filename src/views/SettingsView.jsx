@@ -785,8 +785,8 @@ export function SettingsView() {
                 </>
               )}
 
-              <div class="settings-card-divider" />
-              <div class="settings-card-row">
+              {!isDetection && <div class="settings-card-divider" />}
+              {!isDetection && <div class="settings-card-row">
                 <label class="settings-field">
                   <span class="settings-label">Number of Classes</span>
                   <span class="settings-hint">
@@ -807,7 +807,7 @@ export function SettingsView() {
                     }
                   />
                 </label>
-              </div>
+              </div>}
             </div>
           </section>
 
@@ -1144,16 +1144,23 @@ export function SettingsView() {
                       <div class="settings-select-wrap">
                         <select
                           class="settings-select"
-                          value={draft.earlyStoppingMonitor}
-                          disabled={locked}
+                          value={isDetection ? "val/map" : draft.earlyStoppingMonitor}
+                          disabled={locked || isDetection}
                           onChange={(e) =>
                             set("earlyStoppingMonitor", e.target.value)
                           }
                         >
-                          <option value="val/loss">Validation Loss</option>
-                          <option value="val/accuracy">
-                            Validation Accuracy
-                          </option>
+                          {isDetection ? (
+                            // Detection logs no validation loss or accuracy.
+                            <option value="val/map">Validation mAP</option>
+                          ) : (
+                            <>
+                              <option value="val/loss">Validation Loss</option>
+                              <option value="val/accuracy">
+                                Validation Accuracy
+                              </option>
+                            </>
+                          )}
                         </select>
                         <span class="settings-select-chevron" />
                       </div>

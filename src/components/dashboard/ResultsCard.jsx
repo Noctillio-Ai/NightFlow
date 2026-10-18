@@ -1,7 +1,8 @@
 import { stats } from "../../state/dashboard.js";
 import { projectRuns } from "../../state/experiments.js";
+import { currentProject } from "../../state/projects.js";
 import { navigate } from "../../state/router.js";
-import { formatPercent } from "../../utils/format.js";
+import { headlineFor } from "../../utils/headline.js";
 import { runSeries, argMax } from "../../utils/runCurves.js";
 import { Card } from "./Card.jsx";
 import { MetricChart } from "./MetricChart.jsx";
@@ -29,9 +30,10 @@ function ResultTile({ icon, label, value, detail, run }) {
   );
 }
 
-/** Best validation/test accuracy and the best run's validation curve. */
+/** Best validation/test score (accuracy, or mAP for detection) and the best run's validation curve. */
 export function ResultsCard() {
   const s = stats.value;
+  const h = headlineFor(currentProject.value?.taskType);
   const runs = projectRuns.value;
   const bestVal = s.bestAcc != null ? runs.find((r) => r.status === "completed" && r.bestAcc === s.bestAcc) : null;
   const bestTest = s.bestTestAcc != null ? runs.find((r) => r.testAcc === s.bestTestAcc) : null;
@@ -54,15 +56,15 @@ export function ResultsCard() {
       <div class="dash-results-tiles">
         <ResultTile
           icon={<TrophyIcon size={20} />}
-          label="Best validation accuracy"
-          value={formatPercent(s.bestAcc)}
+          label={`Best validation ${h.name}`}
+          value={h.format(s.bestAcc)}
           detail={bestVal ? `${bestEpoch >= 0 ? `Epoch ${bestEpoch + 1} · ` : ""}${runLabel(bestVal)}` : "No completed runs yet"}
           run={bestVal}
         />
         <ResultTile
           icon={<CheckCircleIcon size={20} />}
-          label="Best test accuracy"
-          value={formatPercent(s.bestTestAcc)}
+          label={`Best test ${h.name}`}
+          value={h.format(s.bestTestAcc)}
           detail={bestTest ? runLabel(bestTest) : "Run a test to see results"}
           run={bestTest}
         />
@@ -70,15 +72,15 @@ export function ResultsCard() {
 
       <div class="dash-chart-block dash-chart-block--fill">
         <div class="dash-chart-head">
-          <span class="dash-chart-title">Validation accuracy</span>
+          <span class="dash-chart-title">Validation {h.name}</span>
           {bestVal && <span class="dash-chart-sub">{runLabel(bestVal)}</span>}
         </div>
         <MetricChart
           height={196}
           fill
-          series={[{ label: "Val accuracy", data: valAcc, color: "#22c55e", area: true }]}
+          series={[{ label: `Val ${h.name}`, data: valAcc, color: "#22c55e", area: true }]}
           yDomain={[0, 1]}
-          yFormat={(v) => `${(v * 100).toFixed(v === 0 || v === 1 || v === 0.5 ? 0 : 1)}%`}
+          yFormat={h.percent ? (v) => `${(v * 100).toFixed(v === 0 || v === 1 || v === 0.5 ? 0 : 1)}%` : (v) => v.toFixed(2)}
           marker={bestEpoch >= 0 ? { series: 0, at: bestEpoch } : null}
           empty={bestVal ? "No per-epoch history recorded for this run" : "Results appear after your first completed run"}
         />

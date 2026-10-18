@@ -1,19 +1,14 @@
 // Helpers for test-split metrics. A test run is a single evaluation, so each
 // test/* tag holds one value; re-running the test replaces it.
 
-// Keys AutoTimm uses for test accuracy, most common first.
-const TEST_ACC_KEYS = ["test/accuracy", "test/acc", "test/MulticlassAccuracy"];
+import { headlineFor, pickTag } from "./headline.js";
 
 // Structured test outputs stored alongside scalars, not single numbers.
 const NON_SCALAR = new Set(["test/confusion_matrix", "test/per_class_metrics"]);
 
-/** Test accuracy from a flat `{ tag: number }` metrics map, or null. */
-export function pickTestAcc(metrics) {
-  for (const key of TEST_ACC_KEYS) {
-    const v = metrics?.[key];
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-  }
-  return null;
+/** The task's headline test score (accuracy, or mAP for detection) from a flat `{ tag: number }` map, or null. */
+export function pickTestAcc(metrics, taskType) {
+  return pickTag(metrics, headlineFor(taskType).testTags);
 }
 
 /** Latest value of every test/* scalar, as a flat `{ tag: number }` map. */

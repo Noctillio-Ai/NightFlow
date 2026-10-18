@@ -49,6 +49,7 @@ import {
 import { projectRuns, resolveBackboneName } from "../state/experiments.js";
 import { addToQueue, projectQueue, removeFromQueue, queueLength } from "../state/queue.js";
 import { useEscape } from "../hooks/useEscape.js";
+import { headlineFor } from "../utils/headline.js";
 import { runSeries, baseName } from "../utils/runCurves.js";
 
 function SshErrorModal() {
@@ -148,8 +149,8 @@ function buildStepsCommand(project, steps = "fit+test") {
   return `__STEPS_JSON__:${JSON.stringify({ mode: "direct", env_path: python, config_path: cfg, steps })}`;
 }
 
-function buildTrainingCommand(project) {
-  return buildStepsCommand(project, "fit+test");
+function buildTrainingCommand(project, withTest = true) {
+  return buildStepsCommand(project, withTest ? "fit+test" : "fit");
 }
 
 function buildTestCommand(project) {
@@ -223,9 +224,11 @@ function ExperimentCard() {
   const [tab, setTab] = useState("loss");
   if (!project) return null;
 
-  const command = buildTrainingCommand(project);
+  // Skip the test step only when a sync found no test split.
+  const hasTestSet = datasetPathStatus.value.testSet !== false;
+  const command = buildTrainingCommand(project, hasTestSet);
   const testCommand = buildTestCommand(project);
-  const commandDisplay = buildCommandDisplay(project);
+  const commandDisplay = buildCommandDisplay(project, hasTestSet ? "fit+test" : "fit");
   const testCommandDisplay = buildCommandDisplay(project, "test");
   const validation = datasetValidation.value;
   const env = envInfo.value;
@@ -275,9 +278,10 @@ function ExperimentCard() {
     ? { trainLoss: trainingLossCurve.value || [], valLoss: [], valAcc: trainingAccCurve.value || [] }
     : latest?.series || { trainLoss: [], valLoss: [], valAcc: [] };
   const chartCaption = active ? "Live" : latest ? latest.run.name || latest.run.id : null;
+  const h = headlineFor(project.taskType);
 
   const datasetPath = project.folderPath || project.trainPath;
-  const classes = validation?.info?.classes || project.numClasses;
+  const classes = validation?.info?.classes || validation?.info?.categories || project.numClasses;
   const maxEpochs = active ? trainingMaxEpochs.value || project.maxEpochs || 10 : project.maxEpochs || 10;
   const epochNow = Math.min(maxEpochs, (trainingEpoch.value || 0) + 1);
   const progress = active ? trainingProgress.value : 0;
@@ -347,7 +351,7 @@ function ExperimentCard() {
             Training loss
           </button>
           <button role="tab" aria-selected={tab === "acc"} class={`dash-tab${tab === "acc" ? " dash-tab--active" : ""}`} onClick={() => setTab("acc")}>
-            Validation accuracy
+            Validation {h.name}
           </button>
           <div class="dash-legend">
             {chartCaption && <span class="dash-chart-sub">{chartCaption}</span>}
@@ -357,7 +361,7 @@ function ExperimentCard() {
                 {series.valLoss.length > 0 && <span><i style={{ background: "#8b5cf6" }} />Val loss</span>}
               </>
             ) : (
-              series.valAcc.length > 0 && <span><i style={{ background: "#22c55e" }} />Val accuracy</span>
+              series.valAcc.length > 0 && <span><i style={{ background: "#22c55e" }} />Val {h.name}</span>
             )}
           </div>
         </div>
@@ -375,10 +379,10 @@ function ExperimentCard() {
         ) : (
           <MetricChart
             height={180}
-            series={[{ label: "Val accuracy", data: series.valAcc, color: "#22c55e", area: true }]}
+            series={[{ label: `Val ${h.name}`, data: series.valAcc, color: "#22c55e", area: true }]}
             yDomain={[0, 1]}
-            yFormat={(v) => `${(v * 100).toFixed(v === 0 || v === 1 || v === 0.5 ? 0 : 1)}%`}
-            empty={active ? "Waiting for the first validation pass…" : "Accuracy appears after your first run"}
+            yFormat={h.percent ? (v) => `${(v * 100).toFixed(v === 0 || v === 1 || v === 0.5 ? 0 : 1)}%` : (v) => v.toFixed(2)}
+            empty={active ? "Waiting for the first validation pass…" : `${h.title} appears after your first run`}
           />
         )}
       </div>
@@ -420,8 +424,8 @@ function ExperimentCard() {
           <button
             class="dash-btn dash-btn--outline"
             onClick={handleTestClick}
-            disabled={active}
-            title={active ? "A training run is already active" : testCommandDisplay}
+            disabled={active || !hasTestSet}
+            title={active ? "A training run is already active" : !hasTestSet ? "No test set found in the dataset" : testCommandDisplay}
           >
             <CheckCircleIcon size={16} />
             Run test

@@ -1,3 +1,4 @@
+import { cocoDetectionTestPaths } from "./testSet.js";
 import { MODEL_CATEGORIES, YOLOX_MODEL_CATEGORIES, DETECTION_MODEL_CATEGORIES, SEGMENTATION_MODEL_CATEGORIES } from "./modelCatalog.js";
 
 const quote = (value) => JSON.stringify(String(value));
@@ -156,6 +157,12 @@ export function buildConfigYaml(project, runId = "default") {
       lines.push(`    test_csv: ${quote(project.testPath)}`);
   } else if (project.folderPath) {
     lines.push(`    data_dir: ${quote(project.folderPath)}`);
+    // AutoTimm only builds a COCO detection test set from explicit paths.
+    if (task === "Object Detection" && fmt === "COCO JSON") {
+      const testPaths = cocoDetectionTestPaths(project.folderPath);
+      lines.push(`    test_images_dir: ${quote(testPaths.images)}`);
+      lines.push(`    test_ann_file: ${quote(testPaths.annotations)}`);
+    }
   }
 
   if (fmt === "CSV" && task !== "Semantic Segmentation") {
@@ -211,8 +218,9 @@ export function buildConfigYaml(project, runId = "default") {
   }
 
   // Early stopping callback
+  // Detection logs no validation loss; early stopping follows mAP instead.
   if (project.earlyStopping) {
-    const monitor = project.earlyStoppingMonitor || "val/loss";
+    const monitor = task === "Object Detection" ? "val/map" : project.earlyStoppingMonitor || "val/loss";
     const patience = present(project.earlyStoppingPatience) ? project.earlyStoppingPatience : 10;
     const mode = monitor.includes("loss") ? "min" : "max";
     lines.push("  callbacks:");
@@ -241,6 +249,7 @@ export function buildConfigYaml(project, runId = "default") {
 export function validateTrainingProject(project) {
   const task = project.taskType || "Classification";
   if (task === "Classification" && present(project.numClasses) && Number(project.numClasses) < 2) throw new Error("Single-label classification requires at least two classes.");
+  if (task === "Object Detection" && !present(project.numClasses)) throw new Error("Couldn't read the number of classes from the dataset annotations. Check the dataset path and sync the project.");
   if (!TASK_CLASS_PATHS[task]) throw new Error(`Unsupported task: ${task}`);
   if (project.datasetFormat === "JSONL") {
     throw new Error("AutoTimm's training data modules do not support JSONL. Convert the dataset to CSV and select CSV before training.");

@@ -150,9 +150,15 @@
 .db-class.active { background: color-mix(in srgb, #3b82f6 12%, var(--dash-inset)); border-color: color-mix(in srgb, #3b82f6 35%, transparent); color: var(--text-primary); }
 .db-class-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .db-class-count { font-family: var(--dash-mono); font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.db-class-sub { grid-column: 2 / -1; margin-top: -4px; font-size: 11.5px; color: var(--text-muted); }
 .db-class-bar { grid-column: 2 / -1; height: 3px; border-radius: 99px; background: var(--dash-track); overflow: hidden; }
 .db-class-bar span { display: block; height: 100%; border-radius: inherit; opacity: 0.55; }
 .db-class:hover .db-class-bar span, .db-class.active .db-class-bar span { opacity: 0.9; }
+
+.db-classes-note { margin: 8px 0 0; font-size: 11.5px; color: var(--text-muted); }
+.db-class--empty { margin: 10px -6px 0; width: calc(100% + 12px); grid-template-rows: auto; }
+.db-class--empty .db-class-name { font-style: italic; }
+.db-health-pct { color: var(--text-muted); font-weight: 400; }
 
 .db-showall {
   width: 100%;
@@ -266,6 +272,24 @@
 }
 .db-select svg { position: absolute; right: 12px; pointer-events: none; }
 
+.db-toggle {
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: 11px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.db-toggle:hover { color: var(--text-primary); }
+.db-toggle.active { color: var(--text-primary); border-color: color-mix(in srgb, #3b82f6 45%, var(--border-color)); background: color-mix(in srgb, #3b82f6 10%, var(--bg-surface)); }
+.db-toggle.active svg { color: #3b82f6; }
+
 .db-results { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13.5px; }
 .db-results strong { font-weight: 600; }
 
@@ -295,12 +319,42 @@
 .db-card-img:hover { border-color: color-mix(in srgb, #3b82f6 55%, var(--border-color)); transform: translateY(-2px); box-shadow: 0 8px 24px #0004; }
 .db-card-img:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
 
-.db-thumb { display: block; aspect-ratio: 1; background: var(--dash-inset); overflow: hidden; }
+.db-thumb { position: relative; display: block; aspect-ratio: 1; background: var(--dash-inset); overflow: hidden; }
 .db-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .db-card-meta { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px 10px; min-width: 0; }
 .db-card-label { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; color: var(--text-primary); min-width: 0; }
 .db-card-label .db-dot { width: 7px; height: 7px; }
+/* Bounding boxes over a thumbnail (SVG in image pixels, cropped like the image). */
+.db-boxes { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.db-boxes rect { fill: color-mix(in srgb, var(--c) 14%, transparent); stroke: var(--c); stroke-width: 1.6px; }
+.db-row-thumb .db-boxes rect { stroke-width: 1px; }
+
+/* Category chips on cards and rows */
+.db-chips { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; }
+.db-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 2px 7px 2px 6px;
+  border-radius: 99px;
+  background: var(--dash-inset);
+  border: 1px solid var(--dash-inset-border);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.db-chip { flex-shrink: 0; }
+.db-chip:first-child { flex-shrink: 1; }
+.db-chip .db-dot { width: 7px; height: 7px; flex-shrink: 0; }
+.db-chip-name { overflow: hidden; text-overflow: ellipsis; }
+.db-chip-n { font-family: var(--dash-mono); font-size: 11px; color: var(--text-muted); }
+.db-chip--more { flex-shrink: 0; padding: 2px 7px; color: var(--text-muted); font-family: var(--dash-mono); font-size: 11px; }
+.db-chip--empty { color: var(--text-muted); font-weight: 400; }
+.db-card-meta .db-chips { margin-bottom: 1px; }
+
 .db-card-file { font-family: var(--dash-mono); font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .db-skeleton { aspect-ratio: 0.8; cursor: default; background: linear-gradient(90deg, var(--bg-surface), var(--dash-inset), var(--bg-surface)); background-size: 200% 100%; animation: db-shimmer 1.4s ease-in-out infinite; }
@@ -322,10 +376,11 @@
   cursor: zoom-in;
   font-size: 13px;
 }
+.db-row--objects { grid-template-columns: 56px 44px minmax(260px, 1.4fr) minmax(120px, 0.7fr) minmax(0, 1.6fr); }
 .db-row + .db-row { border-top: 1px solid var(--dash-inset-border); }
 .db-row:hover { background: var(--dash-inset); }
 .db-row-n { font-family: var(--dash-mono); font-size: 11.5px; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
-.db-row-thumb { width: 44px; height: 44px; border-radius: 7px; overflow: hidden; background: var(--dash-inset); }
+.db-row-thumb { position: relative; width: 44px; height: 44px; border-radius: 7px; overflow: hidden; background: var(--dash-inset); }
 .db-row-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .db-row-file { font-family: var(--dash-mono); font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .db-row-path { font-family: var(--dash-mono); font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
@@ -433,6 +488,47 @@
   object-fit: contain;
 }
 .db-lightbox-frame img.db-pixelated { image-rendering: pixelated; }
+
+/* Detection: a stage with the image's aspect ratio, so boxes sit in percentages. */
+.db-lightbox { --db-stage-max: min(1100px, calc(100vw - 180px)); }
+.db-stage {
+  position: relative;
+  width: min(var(--db-stage-max), calc(min(100vh - 260px, 640px) * var(--ar)));
+  aspect-ratio: var(--ar);
+}
+.db-lightbox-frame .db-stage img { width: 100%; height: 100%; max-width: none; }
+.db-box {
+  position: absolute;
+  border: 2px solid var(--c);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--c) 10%, transparent);
+  box-shadow: 0 0 0 1px #0006;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.db-box--dim { opacity: 0.18; }
+.db-box--hot { background: color-mix(in srgb, var(--c) 22%, transparent); z-index: 1; }
+.db-box-tag {
+  position: absolute;
+  left: -2px;
+  bottom: 100%;
+  padding: 1px 6px;
+  border-radius: 3px 3px 3px 0;
+  background: var(--c);
+  color: #0b0b0c;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.db-box--inset .db-box-tag { bottom: auto; top: 0; left: 0; border-radius: 0 0 3px 0; }
+
+.db-lightbox-objects { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.db-chip--dark { background: #1c1c1f; border-color: #2f2f34; color: #e4e4e7; cursor: default; }
+.db-chip--dark .db-chip-n { color: #8b8b93; }
+.db-chip--dark.active { border-color: #52525b; background: #26262a; }
+.db-lightbox-boxes { margin-left: auto; }
+.db-lightbox-boxes.active svg { color: #60a5fa; }
 .db-row-path bdi, .db-lightbox-path bdi { unicode-bidi: isolate; direction: ltr; }
 .db-lightbox-body figcaption { padding: 14px 18px 16px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #26262a; }
 .db-lightbox-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; }
@@ -481,7 +577,7 @@
   .db-viewport { flex: none; }
   .db-scroll { position: static; overflow: visible; margin-right: 0; padding-bottom: 8px; }
   .db-pagination { position: sticky; left: auto; bottom: 12px; transform: none; margin: 4px auto 0; width: fit-content; max-width: 100%; overflow-x: auto; }
-  .db-row { grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr); }
+  .db-row, .db-row--objects { grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr); }
   .db-row-n, .db-row-path { display: none; }
 }
 
@@ -492,6 +588,7 @@
   .db-lightbox-nav--prev { left: 18px; }
   .db-lightbox-nav--next { right: 18px; }
   .db-lightbox-body { max-width: 100%; }
+  .db-lightbox { --db-stage-max: calc(100vw - 48px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -364,15 +364,11 @@ export const wizardCanProceed = computed(() => {
   if (step === 3) return d.modelCategory !== "";
   if (step === 4) {
     if (!d.datasetFormat) return false;
-    // Require numClasses for all formats
-    const hasClasses = d.numClasses !== "" && Number.isInteger(Number(d.numClasses)) && d.numClasses >= (d.taskType === "Classification" ? 2 : 1);
-    // For CSV and JSONL, require train and test paths (val is optional)
+    // Require numClasses, except for detection where it's read from the dataset
+    const hasClasses = d.taskType === "Object Detection" || d.numClasses !== "" && Number.isInteger(Number(d.numClasses)) && d.numClasses >= (d.taskType === "Classification" ? 2 : 1);
+    // For CSV and JSONL, require the train path (val and test are optional)
     if (d.datasetFormat === "CSV" || d.datasetFormat === "JSONL") {
-      return (
-        hasClasses &&
-        d.trainPath.trim().length > 0 &&
-        d.testPath.trim().length > 0
-      );
+      return hasClasses && d.trainPath.trim().length > 0;
     }
     // For all other formats (Folder, COCO JSON, COCO, PNG Masks, Cityscapes, VOC, etc.)
     // require folder path (no external validation enforced here)
