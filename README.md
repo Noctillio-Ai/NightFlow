@@ -349,8 +349,8 @@ instance ID per row.
 
 ## Advanced training
 
-Turn on **Power User Mode** (Settings → General) to unlock the **Advanced Training** tab.
-Leave anything blank and it falls through to the AutoTimm default.
+Every project has an **Advanced Training** tab in Settings. Leave anything blank and it
+falls through to the AutoTimm default.
 
 <details>
 <summary><b>The full settings matrix</b></summary>

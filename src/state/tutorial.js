@@ -175,7 +175,7 @@ export const wizardStepTips = [
   },
   {
     title: "Step 6: Advanced Settings",
-    body: "Optional. Turn on Power User Mode to fine-tune training hyperparameters like epochs, learning rate, batch size, and early stopping. Skip this step to use recommended defaults.",
+    body: "Optional. Fine-tune training hyperparameters like epochs, learning rate, batch size, and early stopping. Leave them blank to use recommended defaults.",
   },
   {
     title: "Step 7: Confirm",

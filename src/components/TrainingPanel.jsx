@@ -14,13 +14,15 @@ import {
   trainingTestMetrics,
   trainingTestBatch,
   trainingTestTotalBatches,
-  trainingTestProgress,
   trainingEstimatedRemaining,
   trainingTestOnly,
   stopTraining,
   forceResetTraining,
+  getTrainingRunId,
 } from "../state/training.js";
+import { currentProjectId } from "../state/projects.js";
 import { Sparkline } from "./Sparkline.jsx";
+import { EvaluationPanel } from "./dashboard/EvaluationPanel.jsx";
 
 function formatDuration(ms) {
   if (ms == null || ms <= 0) return null;
@@ -90,78 +92,26 @@ export function TrainingPanel() {
   const isDone = event === "training_complete";
 
   const showTest = event === "testing_started" || event === "test_batch_end" || event === "testing_complete";
+  const testMetrics = trainingTestMetrics.value;
+  const hasTestMetrics = Object.keys(testMetrics).length > 0;
+  const evalProps = {
+    metrics: testMetrics,
+    batch: trainingTestBatch.value,
+    totalBatches: trainingTestTotalBatches.value,
+    runId: getTrainingRunId(currentProjectId.value),
+  };
 
   // For test-only runs, skip the training panel entirely
   if (testOnly) {
+    const state = isError ? "error" : active && event !== "testing_complete" ? "running" : "done";
     return (
-      <>
-        {/* Test / Evaluation panel for test-only runs */}
-        <div class={`training-panel${isError ? " training-panel--error" : (isDone || event === "testing_complete") ? " training-panel--done" : ""}`}>
-          <div class="training-panel-header">
-            <div class="training-panel-title-row">
-              {active && event !== "testing_complete" && <div class="training-panel-spinner" />}
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right:4px">
-                <path d="M6.5 1.75a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75V4h2.75a.75.75 0 0 1 .53 1.28l-4.5 4.5a.75.75 0 0 1-1.06 0l-4.5-4.5A.75.75 0 0 1 2.75 4H5.5V1.75Z" fill="currentColor" opacity="0.5"/>
-                <path d="M2 13.25a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1-.75-.75Z" fill="currentColor"/>
-              </svg>
-              <span class="training-panel-title">Evaluation</span>
-              {event === "testing_complete" || isDone ? (
-                <span class="training-test-badge">Done</span>
-              ) : showTest && trainingTestTotalBatches.value > 0 ? (
-                <span class="training-test-counter">
-                  {trainingTestBatch.value} / {trainingTestTotalBatches.value}
-                </span>
-              ) : (
-                <StatusLabel event={event} reconnected={reconnected} />
-              )}
-            </div>
-            {active && event !== "testing_complete" && (
-              <button class="training-stop-btn" onClick={stopTraining}>
-                Stop
-              </button>
-            )}
-          </div>
-
-          {active && showTest && event !== "testing_complete" && trainingTestProgress.value > 0 && (
-            <ProgressBar value={trainingTestProgress.value} />
-          )}
-
-          {Object.keys(trainingTestMetrics.value).length > 0 && (
-            <div class="training-panel-stats">
-              {Object.entries(trainingTestMetrics.value).map(([key, val]) => {
-                const label = key
-                  .replace(/^test\//, "")
-                  .replace(/_/g, " ");
-                const displayVal =
-                  typeof val === "number" && Number.isFinite(val)
-                    ? val < 1 && val > -1
-                      ? val.toFixed(4)
-                      : val.toFixed(2)
-                    : typeof val === "number" ? "—" : val;
-                return (
-                  <div class="training-stat" key={key}>
-                    <span class="training-stat-label">{label}</span>
-                    <span class="training-stat-value">{displayVal}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {(event === "testing_complete" || isDone) && (
-            <div class="training-panel-done-msg">
-              Evaluation finished successfully.
-            </div>
-          )}
-
-          {isError && error && <div class="training-panel-error">{error}</div>}
-          {(isError || isDone || event === "testing_complete") && !active && (
-            <button class="training-reset-btn" onClick={forceResetTraining}>
-              Dismiss
-            </button>
-          )}
-        </div>
-      </>
+      <EvaluationPanel
+        {...evalProps}
+        state={state}
+        error={error}
+        onStop={stopTraining}
+        onDismiss={forceResetTraining}
+      />
     );
   }
 
@@ -255,64 +205,13 @@ export function TrainingPanel() {
         {isError && error && <div class="training-panel-error">{error}</div>}
       </div>
 
-      {/* Separate Test / Evaluation panel */}
-      {showTest && (
-        <div class={`training-panel${event === "testing_complete" ? " training-panel--done" : ""}`}>
-          <div class="training-panel-header">
-            <div class="training-panel-title-row">
-              {event !== "testing_complete" && <div class="training-panel-spinner" />}
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right:4px">
-                <path d="M6.5 1.75a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75V4h2.75a.75.75 0 0 1 .53 1.28l-4.5 4.5a.75.75 0 0 1-1.06 0l-4.5-4.5A.75.75 0 0 1 2.75 4H5.5V1.75Z" fill="currentColor" opacity="0.5"/>
-                <path d="M2 13.25a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1-.75-.75Z" fill="currentColor"/>
-              </svg>
-              <span class="training-panel-title">Evaluation</span>
-              {event === "testing_complete" ? (
-                <span class="training-test-badge">Done</span>
-              ) : trainingTestTotalBatches.value > 0 ? (
-                <span class="training-test-counter">
-                  {trainingTestBatch.value} / {trainingTestTotalBatches.value}
-                </span>
-              ) : null}
-            </div>
-            {active && event !== "testing_complete" && (
-              <button class="training-stop-btn" onClick={stopTraining}>
-                Stop
-              </button>
-            )}
-          </div>
-
-          {event !== "testing_complete" && trainingTestProgress.value > 0 && (
-            <ProgressBar value={trainingTestProgress.value} />
-          )}
-
-          {Object.keys(trainingTestMetrics.value).length > 0 && (
-            <div class="training-panel-stats">
-              {Object.entries(trainingTestMetrics.value).map(([key, val]) => {
-                const label = key
-                  .replace(/^test\//, "")
-                  .replace(/_/g, " ");
-                const displayVal =
-                  typeof val === "number" && Number.isFinite(val)
-                    ? val < 1 && val > -1
-                      ? val.toFixed(4)
-                      : val.toFixed(2)
-                    : typeof val === "number" ? "—" : val;
-                return (
-                  <div class="training-stat" key={key}>
-                    <span class="training-stat-label">{label}</span>
-                    <span class="training-stat-value">{displayVal}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {event === "testing_complete" && (
-            <div class="training-panel-done-msg">
-              Evaluation finished successfully.
-            </div>
-          )}
-        </div>
+      {/* Evaluation on the test split; stays up after the whole run finishes */}
+      {(showTest || (isDone && hasTestMetrics)) && (
+        <EvaluationPanel
+          {...evalProps}
+          state={event === "testing_complete" || isDone ? "done" : "running"}
+          onStop={active ? stopTraining : undefined}
+        />
       )}
     </>
   );

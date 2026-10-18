@@ -31,6 +31,8 @@ const _defaultState = () => ({
   envInfo: null,
   syncLogs: [],
   lastSyncedAt: null,
+  resyncReason: null, // "settings" when saved settings invalidated the last sync
+  syncStartedAt: null, // ms timestamp of the sync in progress
 });
 
 const _projectState = signal({}); // { [projectId]: ProjectState }
@@ -82,6 +84,13 @@ export const envInfo = computed(
 );
 export const syncLogs = computed(
   () => _getState(currentProjectId.value).syncLogs,
+);
+export const syncStartedAt = computed(
+  () => _getState(currentProjectId.value).syncStartedAt,
+);
+/** Why the project must sync again before training ("settings"), or null. */
+export const resyncReason = computed(
+  () => _getState(currentProjectId.value).resyncReason,
 );
 export const lastSyncedAt = computed(
   () => _getState(currentProjectId.value).lastSyncedAt,
@@ -403,6 +412,7 @@ export async function syncDashboard() {
     syncLogs: [],
     syncProgress: 0,
     syncShowingCompletion: false,
+    syncStartedAt: Date.now(),
   });
   addSyncLog(projectId, "Starting sync...", "info");
 
@@ -434,6 +444,7 @@ export async function syncDashboard() {
     // Mark as synced and hide completion screen
     _setState(projectId, {
       synced: true,
+      resyncReason: null,
       syncShowingCompletion: false,
       syncProgress: 0,
     });
@@ -643,10 +654,13 @@ async function doSync(projectId, abortController) {
           });
         } else {
           const versionInfo = `Python ${envResult.python_version || "?"}, autotimm ${envResult.autotimm_version || "?"}`;
+          // e.g. "Reinstalled autotimm 0.7.34 (was 0.7.30)" — every sync reinstalls it.
+          if (envResult.message) addSyncLog(projectId, envResult.message, "info");
+          if (envResult.warning) addSyncLog(projectId, envResult.warning, "warning");
           addSyncLog(
             projectId,
             `Python environment ready (${versionInfo})`,
-            "success",
+            envResult.warning ? "warning" : "success",
           );
           _setState(projectId, {
             envInfo: {
@@ -654,6 +668,7 @@ async function doSync(projectId, abortController) {
               pythonVersion: envResult.python_version || null,
               autotimmVersion: envResult.autotimm_version || null,
               envType: envResult.env_type || null,
+              warning: envResult.warning || null,
             },
           });
         }
@@ -778,7 +793,9 @@ async function doSync(projectId, abortController) {
             const run = existingById.get(folder);
             if (!run) continue;
             try {
-              const result = await loadRunScalars(run);
+              // Re-read logs for untested runs: a test may have run since the
+              // scalars were first cached.
+              const result = await loadRunScalars(run, run.testAcc == null);
               if (result) synced++;
             } catch {
               // logs may be empty or malformed — skip
@@ -850,6 +867,22 @@ export async function syncConfig(
   }
 }
 
+/**
+ * Invalidate the last sync so the project must sync again before training.
+ * Saved settings can change the dataset, environment or generated config, so
+ * the previous sync results no longer apply. Persisted, so it survives a
+ * restart; the next connect starts the sync automatically.
+ */
+export async function requireResync(projectId, reason = "settings") {
+  _setState(projectId, { synced: false, resyncReason: reason });
+  try {
+    const metadata = (await getSyncMetadata(projectId)) || {};
+    await saveSyncMetadata(projectId, { ...metadata, synced: false, resyncReason: reason });
+  } catch (e) {
+    console.warn("[requireResync] Failed to persist sync state:", e);
+  }
+}
+
 // ── Restore persisted sync state ────────────────────────────────────────────
 
 export async function restoreSyncState(projectId) {
@@ -863,6 +896,7 @@ export async function restoreSyncState(projectId) {
       envInfo: metadata.envInfo ?? null,
       syncLogs: metadata.syncLogs ?? [],
       lastSyncedAt: metadata.lastSyncedAt ?? null,
+      resyncReason: metadata.resyncReason ?? null,
     });
     if (metadata.datasetPathStatus) {
       datasetPathStatus.value = metadata.datasetPathStatus;

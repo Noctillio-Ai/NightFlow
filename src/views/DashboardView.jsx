@@ -1,6 +1,5 @@
 import { useState, useEffect } from "preact/hooks";
 import { TrainingPanel } from "../components/TrainingPanel.jsx";
-import SyncLogsPanel from "../components/SyncLogsPanel.jsx";
 import { Card, Dot } from "../components/dashboard/Card.jsx";
 import { ProjectHero } from "../components/dashboard/ProjectHero.jsx";
 import { WorkspaceBanner } from "../components/dashboard/WorkspaceBanner.jsx";
@@ -8,6 +7,8 @@ import { ResultsCard } from "../components/dashboard/ResultsCard.jsx";
 import { RecentRunsCard } from "../components/dashboard/RecentRunsCard.jsx";
 import { MachineHealth } from "../components/dashboard/MachineHealth.jsx";
 import { MetricChart } from "../components/dashboard/MetricChart.jsx";
+import { ConnectCard } from "../components/dashboard/ConnectCard.jsx";
+import { SyncPanel } from "../components/dashboard/SyncPanel.jsx";
 import {
   CheckCircleIcon,
   CropIcon,
@@ -21,17 +22,12 @@ import {
 import { useSystemMetrics } from "../hooks/useSystemMetrics.js";
 import {
   stats,
-  toggleSshConnection,
-  sshConnecting,
   sshConnected,
   sshConnectionError,
   clearSshConnectionError,
   dashboardSynced,
   dashboardSyncing,
-  syncDashboard,
-  syncProgress,
   syncShowingCompletion,
-  syncLogs,
   datasetPathStatus,
   datasetValidation,
   envInfo,
@@ -133,104 +129,6 @@ function SshErrorModal() {
   );
 }
 
-function ProgressCircle({ percentage }) {
-  const circumference = 2 * Math.PI * 45; // radius = 45
-  const dashOffset = circumference - (percentage / 100) * circumference;
-
-  return (
-    <div class="progress-circle-container" role="progressbar" aria-label="Project sync progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percentage)}>
-      <svg
-        width="80"
-        height="80"
-        viewBox="0 0 100 100"
-        class="progress-circle-svg"
-      >
-        <circle
-          cx="50"
-          cy="50"
-          r="45"
-          fill="none"
-          stroke="var(--sync-progress-bg)"
-          stroke-width="3"
-        />
-        <circle
-          cx="50"
-          cy="50"
-          r="45"
-          fill="none"
-          stroke="var(--sync-progress-fill)"
-          stroke-width="3"
-          stroke-dasharray={circumference}
-          stroke-dashoffset={dashOffset}
-          stroke-linecap="round"
-          class="progress-circle-svg-fill"
-        />
-      </svg>
-      <span class="progress-circle-text">{Math.round(percentage)}%</span>
-    </div>
-  );
-}
-
-function SyncScreen() {
-  const syncing = dashboardSyncing.value;
-  const progress = syncProgress.value;
-  const showingCompletion = syncShowingCompletion.value;
-  const logs = syncLogs.value;
-  const latestLog = logs.length > 0 ? logs[logs.length - 1] : null;
-
-  return (
-    <div class="dashboard-sync-screen">
-      <div class="dashboard-sync-card">
-        <div
-          class={`dashboard-sync-icon${syncing ? " dashboard-sync-icon--spinning" : ""}`}
-        >
-          <svg
-            width="40"
-            height="40"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M23 4v6h-6" />
-            <path d="M1 20v-6h6" />
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-          </svg>
-        </div>
-        <h2 class="dashboard-sync-title">Sync Project Data</h2>
-        <p class="dashboard-sync-desc">
-          Scan the project directory for MLflow runs, parse metrics and
-          checkpoints, and import them into the local database.
-        </p>
-        {syncing || showingCompletion ? (
-          <ProgressCircle percentage={progress} />
-        ) : (
-          <button class="dashboard-sync-btn" onClick={syncDashboard}>
-            Sync
-          </button>
-        )}
-        {(syncing || showingCompletion) && (
-          <div class="sync-progress-section">
-            <div class="sync-progress-bar-track">
-              <div
-                class="sync-progress-bar-fill"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            {latestLog && (
-              <p class={`sync-progress-step sync-step-${latestLog.type}`}>
-                {latestLog.message}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // steps: "fit+test" (default), "fit", or "test"
 function buildStepsCommand(project, steps = "fit+test") {
   const env = envInfo.value;
@@ -263,7 +161,7 @@ function buildTestCommand(project) {
   return buildStepsCommand(project, "test");
 }
 
-// Human-readable version shown in the Power User command preview.
+// Human-readable version shown in the dashboard's command preview.
 function buildCommandDisplay(project, steps = "fit+test") {
   const env = envInfo.value;
   const useVenv = env && (env.status === "exists" || env.status === "created");
@@ -375,11 +273,11 @@ function ExperimentCard() {
     const latestRun = completed[0];
     if (!latestRun) return;
 
-    // Write config with the completed run's ID so autotimm test finds the checkpoint
-    const runId = crypto.randomUUID();
+    // Evaluate under the completed run's ID: config.yaml points AutoTimm at its
+    // checkpoint, and the test results are saved onto that run.
     try {
       await syncConfig(project, project.id, latestRun.id);
-      await startTraining(testCommand, project.projectPath, runId, { testOnly: true, projectId: project.id });
+      await startTraining(testCommand, project.projectPath, latestRun.id, { testOnly: true, projectId: project.id });
     } catch (error) { alert(`Could not start evaluation: ${error.message || error}`); }
   };
 
@@ -497,12 +395,10 @@ function ExperimentCard() {
         )}
       </div>
 
-      {project.powerUserMode && (
-        <details class="dash-command">
-          <summary><TerminalIcon size={14} /> Training command</summary>
-          <code>{commandDisplay}</code>
-        </details>
-      )}
+      <details class="dash-command">
+        <summary><TerminalIcon size={14} /> Training command</summary>
+        <code>{commandDisplay}</code>
+      </details>
 
       {readiness.blocked && !active && (
         <div class="dash-note dash-note--err" id="training-readiness-detail">{readiness.detail}</div>
@@ -537,7 +433,7 @@ function ExperimentCard() {
             class="dash-btn dash-btn--outline"
             onClick={handleTestClick}
             disabled={active}
-            title={active ? "A training run is already active" : project.powerUserMode ? testCommandDisplay : "Evaluate the latest completed run"}
+            title={active ? "A training run is already active" : testCommandDisplay}
           >
             <CheckCircleIcon size={16} />
             Run test
@@ -600,80 +496,17 @@ export function DashboardView() {
   const synced = dashboardSynced.value;
   const syncing = dashboardSyncing.value;
   const showingCompletion = syncShowingCompletion.value;
-  const isPowerUser = currentProject.value?.powerUserMode;
   const showOverview = connected && !syncing && !showingCompletion && synced;
-  const [syncLogsOpen, setSyncLogsOpen] = useState(() => {
-    try { return localStorage.getItem("nf-sync-logs-open") === "true"; } catch { return false; }
-  });
-
-  // Persist syncLogsOpen preference
-  useEffect(() => {
-    try { localStorage.setItem("nf-sync-logs-open", String(syncLogsOpen)); } catch { /* ignore */ }
-  }, [syncLogsOpen]);
-
-  // Close sync logs drawer on Escape
-  useEffect(() => {
-    if (!syncLogsOpen) return;
-    function onKey(e) {
-      if (e.key === "Escape") setSyncLogsOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [syncLogsOpen]);
-
-  // Auto-open drawer when sync starts in power mode
-  useEffect(() => {
-    if (syncing && isPowerUser) setSyncLogsOpen(true);
-  }, [syncing, isPowerUser]);
 
   return (
     <div class="dashboard-view dash">
       <ProjectHero />
       {!connected ? (
-        <div class="dashboard-connect-card">
-          <div class="dashboard-connect-symbol" aria-hidden="true">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="12" rx="2" /><path d="M8 21h8M12 15v6M7 7l3 2-3 2M13 11h4" />
-            </svg>
-          </div>
-          <span class="page-eyebrow">LET’S GET STARTED</span>
-          <h3>Connect your workspace</h3>
-          <p>Connect to your compute environment to sync your dataset, check system resources, and launch a training run.</p>
-          <button class="dashboard-connect-btn" onClick={toggleSshConnection} disabled={sshConnecting.value}>
-            {sshConnecting.value ? "Connecting…" : "Connect workspace"}
-            <span aria-hidden="true">→</span>
-          </button>
-          <span class="dashboard-connect-hint">You can update your connection in project settings.</span>
-        </div>
+        <ConnectCard />
       ) : !showOverview ? (
-        <SyncScreen />
+        <SyncPanel />
       ) : (
         <Overview />
-      )}
-      {/* Sync Logs — slide-over drawer */}
-      {syncLogsOpen && isPowerUser && (
-        <div class="sync-logs-drawer-overlay" onClick={() => setSyncLogsOpen(false)}>
-          <div class="sync-logs-drawer" onClick={(e) => e.stopPropagation()}>
-            <div class="sync-logs-drawer-header">
-              <h3 class="sync-logs-drawer-title">
-                <svg class="sync-logs-drawer-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                  <polyline points="10 9 9 9 8 9" />
-                </svg>
-                Sync Logs
-              </h3>
-              <button class="sync-logs-drawer-close" onClick={() => setSyncLogsOpen(false)} title="Close (Esc)">
-                ✕
-              </button>
-            </div>
-            <div class="sync-logs-drawer-body">
-              <SyncLogsPanel />
-            </div>
-          </div>
-        </div>
       )}
       <SshErrorModal />
     </div>

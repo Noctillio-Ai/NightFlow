@@ -125,6 +125,19 @@ fn remove_training_meta(project_dir: &str) {
     let _ = std::fs::remove_file(meta_path(project_dir));
 }
 
+/// Project folder for a run's event log: `<project>/logs/<run>/<run>.jsonl`,
+/// or `<project>/training_events.jsonl` for runs without an id.
+fn project_dir_of_log(log: &std::path::Path) -> Option<std::path::PathBuf> {
+    if log.file_name().and_then(|n| n.to_str()) == Some(TRAINING_LOG_FILE_DEFAULT) {
+        return log.parent().map(|p| p.to_path_buf());
+    }
+    let logs_dir = log.parent()?.parent()?;
+    if logs_dir.file_name().and_then(|n| n.to_str()) != Some("logs") {
+        return None;
+    }
+    logs_dir.parent().map(|p| p.to_path_buf())
+}
+
 fn read_complete_lines(path: &std::path::Path, offset: &mut u64) -> std::io::Result<Vec<String>> {
     use std::io::{BufRead, Seek, SeekFrom};
     let mut file = std::fs::File::open(path)?;
@@ -876,8 +889,14 @@ pub async fn watch_training_log(
                     }
                 }
             }
-            if let Some(parent) = path.parent() {
-                remove_training_meta(&parent.to_string_lossy());
+            // The meta file lives in the project folder, not next to the log.
+            // Only clear it if it still describes this process: a test step
+            // started after this fit may already have written its own.
+            if let Some(dir) = project_dir_of_log(&path) {
+                let dir = dir.to_string_lossy().to_string();
+                if read_training_meta(&dir).is_some_and(|m| m.pid == pid) {
+                    remove_training_meta(&dir);
+                }
             }
             break;
         }
@@ -909,6 +928,14 @@ pub async fn watch_training_log(
 #[cfg(test)]
 mod command_tests {
     use super::*;
+    #[test]
+    fn meta_lives_in_the_project_folder_of_a_run_log() {
+        let p = std::path::Path::new("/home/u/proj/logs/abc/abc.jsonl");
+        assert_eq!(project_dir_of_log(p).unwrap(), std::path::PathBuf::from("/home/u/proj"));
+        let d = std::path::Path::new("/home/u/proj").join(TRAINING_LOG_FILE_DEFAULT);
+        assert_eq!(project_dir_of_log(&d).unwrap(), std::path::PathBuf::from("/home/u/proj"));
+        assert!(project_dir_of_log(std::path::Path::new("/tmp/x.jsonl")).is_none());
+    }
     #[test]
     fn structured_paths_preserve_colons_and_spaces() {
         let command = format!("__STEPS_JSON__:{}", serde_json::json!({"mode":"direct", "env_path":r"C:\My Project\python.exe", "config_path":r"C:\My Project\config.yaml", "steps":"fit+test"}));

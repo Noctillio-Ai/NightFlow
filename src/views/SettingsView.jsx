@@ -17,7 +17,7 @@ import {
   DETECTION_ARCHS,
   SEG_HEAD_TYPES,
 } from "../state/projects.js";
-import { sshConnected, syncConfig, platform } from "../state/dashboard.js";
+import { sshConnected, syncConfig, platform, requireResync } from "../state/dashboard.js";
 import { allRuns, loadRuns } from "../state/experiments.js";
 import { DeleteProjectDialog } from "../components/DeleteProjectDialog.jsx";
 import { clearAllData, saveRun } from "../db/database.js";
@@ -40,7 +40,6 @@ const EDITABLE_KEYS = [
   "valPath",
   "testPath",
   "numClasses",
-  "powerUserMode",
   "maxEpochs",
   "learningRate",
   "batchSize",
@@ -337,13 +336,6 @@ export function SettingsView() {
   const locked = sshConnected.value;
   const dirty = isDirty(draft, proj);
 
-  // Reset to general tab if power user mode is turned off
-  useEffect(() => {
-    if (!draft.powerUserMode && activeTab === "advanced") {
-      setActiveTab("general");
-    }
-  }, [draft.powerUserMode]);
-
   function set(key, value) {
     setDraft((d) => ({ ...d, [key]: value }));
     setSaved(false);
@@ -377,6 +369,8 @@ export function SettingsView() {
       // Regenerate config.yaml with updated settings
       const updatedProject = { ...proj, ...normalized };
       await syncConfig(updatedProject, proj.id);
+      // The last sync's dataset/environment results may no longer apply.
+      await requireResync(proj.id);
       setSaved(true);
       clearTimeout(savedTimer.current);
       savedTimer.current = setTimeout(() => setSaved(false), 2000);
@@ -421,23 +415,21 @@ export function SettingsView() {
         </div>
       )}
 
-      {/* Tab navigation — only show tabs when power user mode is on */}
-      {draft.powerUserMode && (
-        <div class="settings-tabs">
-          <button
-            class={`settings-tab ${activeTab === "general" ? "settings-tab--active" : ""}`}
-            onClick={() => setActiveTab("general")}
-          >
-            General
-          </button>
-          <button
-            class={`settings-tab ${activeTab === "advanced" ? "settings-tab--active" : ""}`}
-            onClick={() => setActiveTab("advanced")}
-          >
-            Advanced Training
-          </button>
-        </div>
-      )}
+      {/* Tab navigation */}
+      <div class="settings-tabs">
+        <button
+          class={`settings-tab ${activeTab === "general" ? "settings-tab--active" : ""}`}
+          onClick={() => setActiveTab("general")}
+        >
+          General
+        </button>
+        <button
+          class={`settings-tab ${activeTab === "advanced" ? "settings-tab--active" : ""}`}
+          onClick={() => setActiveTab("advanced")}
+        >
+          Advanced Training
+        </button>
+      </div>
 
       {/* ─── General Tab ─── */}
       {activeTab === "general" && (
@@ -846,22 +838,6 @@ export function SettingsView() {
                   {theme.value === "dark" ? "Dark" : "Light"}
                 </button>
               </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row settings-row-between">
-                <div>
-                  <div class="settings-label">Power User Mode</div>
-                  <div class="settings-desc">
-                    Enable advanced features and controls
-                  </div>
-                </div>
-                <button
-                  class="settings-theme-btn"
-                  disabled={locked}
-                  onClick={() => set("powerUserMode", !draft.powerUserMode)}
-                >
-                  {draft.powerUserMode ? "On" : "Off"}
-                </button>
-              </div>
             </div>
           </section>
 
@@ -1004,7 +980,7 @@ export function SettingsView() {
                   Delete Project
                 </button>
               </div>
-              {draft.powerUserMode && <ClearAllDataRow />}
+              <ClearAllDataRow />
             </div>
           </section>
 
@@ -1012,7 +988,7 @@ export function SettingsView() {
       )}
 
       {/* ─── Advanced Training Tab ─── */}
-      {activeTab === "advanced" && draft.powerUserMode && (
+      {activeTab === "advanced" && (
         <>
           <section class="settings-section">
             <div class="settings-section-header">
@@ -1409,7 +1385,7 @@ export function SettingsView() {
         {saved ? (
           <div class="settings-saved-msg">
             <span dangerouslySetInnerHTML={{ __html: checkIcon }} />
-            Changes saved
+            Changes saved · the project will sync again when you connect
           </div>
         ) : (
           <>

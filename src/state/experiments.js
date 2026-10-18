@@ -14,6 +14,7 @@ import {
   updateRun as dbUpdateRun,
   deleteRun as dbDeleteRun,
 } from "../db/database.js";
+import { pickTestAcc, testMetricsFromScalars } from "../utils/testMetrics.js";
 
 /**
  * Resolve the actual backbone/model name from a project's category and task type.
@@ -195,6 +196,19 @@ export async function loadRunScalars(run, force = false) {
       // Merge with existing persisted scalars (don't lose data already in DB)
       const existing = run.scalars || {};
       updates.scalars = { ...existing, ...scalars };
+
+      // Runs evaluated outside the live session (or imported) only have their
+      // test results in the logs; lift them onto the run so tables show them.
+      const testMetrics = testMetricsFromScalars(updates.scalars);
+      if (Object.keys(testMetrics).length > 0) {
+        // Logs keep every evaluation; the run shows the latest one.
+        for (const tag of Object.keys(testMetrics)) {
+          updates.scalars[tag] = updates.scalars[tag].slice(-1);
+        }
+        updates.testMetrics = testMetrics;
+        const testAcc = pickTestAcc(testMetrics);
+        if (testAcc != null) updates.testAcc = testAcc;
+      }
     }
 
     // 3. Also load hparams.yaml if not already cached

@@ -125,9 +125,10 @@ export function collectChecks(project) {
         label: "AutoTimm",
         value: env.autotimmVersion || "not installed",
         primary: env.autotimmVersion || "Not installed",
-        detail: "Training library",
-        tag: env.autotimmVersion ? envTag(env) : "Missing",
-        state: env.autotimmVersion ? "ok" : "err",
+        detail: env.warning ? "Reinstall failed · previous version in use" : "Training library",
+        // A failed reinstall leaves the previous version in use.
+        tag: !env.autotimmVersion ? "Missing" : env.warning ? "Not updated" : envTag(env),
+        state: !env.autotimmVersion ? "err" : env.warning ? "warn" : "ok",
       });
     }
   }
