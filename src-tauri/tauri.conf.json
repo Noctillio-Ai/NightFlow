@@ -14,6 +14,7 @@
     "targets": [
       "dmg",
       "app",
+      "nsis",
       "deb",
       "appimage"
     ],
@@ -34,7 +35,8 @@
       "nsis": {
         "installMode": "perMachine",
         "displayLanguageSelector": false,
-        "installerIcon": "icons/icon.ico"
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "windows/installer-hooks.nsh"
       }
     },
     "linux": {

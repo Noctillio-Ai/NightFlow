@@ -13,11 +13,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows builds are temporarily paused; retain platform code for re-enablement.
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
             label: macOS-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: Windows-x64
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: Linux-x64
@@ -99,6 +101,15 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
+      - name: Upload Windows artifacts
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NightFlow-${{ matrix.label }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+
       - name: Upload Linux artifacts
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
@@ -124,7 +135,7 @@ jobs:
       - name: Collect release files
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp {} release/ \;
+          find artifacts -type f \( -name "*.dmg" -o -name "*-setup.exe" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp {} release/ \;
           echo "Release files:"
           ls -lh release/
 
