@@ -8,7 +8,8 @@ test('stageOf maps the real sync messages to their stage', () => {
   assert.equal(stageOf('Starting sync...'), -1);
   assert.equal(stageOf('Local mode'), 0);
   assert.equal(stageOf('Creating project directory locally...'), 0);
-  assert.equal(stageOf('conda not found, falling back to uv'), 0);
+  assert.equal(stageOf('Checking uv installation...'), 0);
+  assert.equal(stageOf('Replaced the old conda environment with a uv one and installed dependencies'), 1);
   assert.equal(stageOf('uv ready (0.4.18)'), 0);
   assert.equal(stageOf('Setting up Python 3.12 environment with latest autotimm...'), 1);
   assert.equal(stageOf('Python environment ready (uv · Python 3.12.4)'), 1);

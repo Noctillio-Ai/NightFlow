@@ -76,6 +76,8 @@ export function ConnectCard() {
   const syncDetail =
     resyncReason.value === "settings"
       ? "Your settings changed, so NightFlow syncs again right after connecting."
+      : resyncReason.value === "uv-migration"
+        ? "This project's environment was built with conda, so NightFlow rebuilds it with uv right after connecting."
       : remote
         ? "Checks the remote environment and dataset each time you connect."
         : syncedAt

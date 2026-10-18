@@ -138,11 +138,23 @@ pub fn find_uv() -> Option<String> {
     let candidates = ["uv".to_string()];
     let home = home_dir().unwrap_or_default();
     let extra = if cfg!(windows) {
-        // On Windows the standalone installer defaults to %USERPROFILE%\.local\bin
-        vec![
-            format!(r"{}\.local\bin\uv.exe", home),
-            format!(r"{}\.cargo\bin\uv.exe", home),
-        ]
+        // Where uv lands on Windows. The app's own PATH isn't refreshed after an
+        // install, so probe the usual locations directly:
+        // - a custom UV_INSTALL_DIR / XDG_BIN_HOME
+        // - the standalone installer (%USERPROFILE%\.local\bin, older: .cargo\bin)
+        // - winget's links folder and Scoop's shims
+        let env_dir = |var: &str| std::env::var(var).ok().filter(|v| !v.is_empty());
+        let mut paths = Vec::new();
+        for dir in [env_dir("UV_INSTALL_DIR"), env_dir("XDG_BIN_HOME")].into_iter().flatten() {
+            paths.push(format!(r"{}\uv.exe", dir));
+        }
+        paths.push(format!(r"{}\.local\bin\uv.exe", home));
+        paths.push(format!(r"{}\.cargo\bin\uv.exe", home));
+        if let Some(local) = env_dir("LOCALAPPDATA") {
+            paths.push(format!(r"{}\Microsoft\WinGet\Links\uv.exe", local));
+        }
+        paths.push(format!(r"{}\scoop\shims\uv.exe", home));
+        paths
     } else {
         vec![
             format!("{}/.local/bin/uv", home),
@@ -173,17 +185,24 @@ async fn ensure_uv_available() -> Result<String, String> {
     }
 
     let install = if cfg!(windows) {
-        tokio::process::Command::new("powershell")
+        // Astral's official installer (per-user, no admin). Force TLS 1.2 for
+        // older Windows PowerShell defaults and hide the progress bar, which
+        // otherwise slows Invoke-RestMethod down badly. Give up after 5 minutes
+        // rather than leaving sync stuck.
+        let script = "[Net.ServicePointManager]::SecurityProtocol = \
+            [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; \
+            $ProgressPreference = 'SilentlyContinue'; \
+            irm https://astral.sh/uv/install.ps1 | iex";
+        let run = tokio::process::Command::new("powershell")
             .no_window()
-            .args([
-                "-NoProfile",
-                "-ExecutionPolicy", "ByPass",
-                "-c",
-                "irm https://astral.sh/uv/install.ps1 | iex",
-            ])
-            .output()
-            .await
-            .map_err(|e| format!("Failed to run uv installer: {}", e))?
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "ByPass", "-Command", script])
+            .stdin(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .output();
+        match tokio::time::timeout(std::time::Duration::from_secs(300), run).await {
+            Ok(result) => result.map_err(|e| format!("Failed to run uv installer: {}", e))?,
+            Err(_) => return Err("uv installation timed out after 5 minutes".to_string()),
+        }
     } else {
         tokio::process::Command::new("sh")
             .no_window()
@@ -468,67 +487,30 @@ async fn get_venv_versions(venv_path: &std::path::Path) -> (Option<String>, Opti
 /// Reinstall the latest AutoTimm into an existing environment. Only AutoTimm
 /// is forced; its dependencies (PyTorch etc.) are upgraded only if the new
 /// version needs them, so a resync doesn't re-download gigabytes.
-async fn reinstall_autotimm(
-    project_dir: &str,
-    venv_path: &std::path::Path,
-    is_conda_env: bool,
-) -> Result<(), String> {
+async fn reinstall_autotimm(project_dir: &str, venv_path: &std::path::Path) -> Result<(), String> {
     let venv_py = venv_python(venv_path).to_string_lossy().to_string();
+    let uv_bin = ensure_uv_available().await?;
 
-    // uv: refresh the index so a just-published release is seen, then upgrade
-    // and reinstall only the autotimm package.
-    let uv_err = match find_uv() {
-        Some(uv_bin) => {
-            let out = tokio::process::Command::new(&uv_bin)
-                .no_window()
-                .args([
-                    "pip", "install", "autotimm[all]",
-                    "--upgrade-package", "autotimm",
-                    "--reinstall-package", "autotimm",
-                    "--refresh-package", "autotimm",
-                    "--python", &venv_py,
-                ])
-                .current_dir(project_dir)
-                .output()
-                .await;
-            match out {
-                Ok(o) if o.status.success() => return Ok(()),
-                Ok(o) => String::from_utf8_lossy(&o.stderr).trim().to_string(),
-                Err(e) => format!("could not run uv: {}", e),
-            }
-        }
-        None => "uv not found".to_string(),
-    };
-
-    // uv venvs have no pip, so there is nothing else to try.
-    if !is_conda_env {
-        return Err(uv_err);
+    // Refresh the index so a just-published release is seen, then upgrade and
+    // reinstall only the autotimm package.
+    let out = tokio::process::Command::new(&uv_bin)
+        .no_window()
+        .args([
+            "pip", "install", "autotimm[all]",
+            "--upgrade-package", "autotimm",
+            "--reinstall-package", "autotimm",
+            "--refresh-package", "autotimm",
+            "--python", &venv_py,
+        ])
+        .current_dir(project_dir)
+        .output()
+        .await
+        .map_err(|e| format!("could not run uv: {}", e))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
-
-    // Conda env: fall back to its own pip.
-    let pip = |args: &'static [&'static str]| {
-        let venv_py = venv_py.clone();
-        async move {
-            tokio::process::Command::new(&venv_py)
-                .no_window()
-                .args(["-m", "pip", "install"])
-                .args(args)
-                .stdin(std::process::Stdio::null())
-                .current_dir(project_dir)
-                .output()
-                .await
-                .map_err(|e| format!("could not run pip: {}", e))
-                .and_then(|o| {
-                    if o.status.success() {
-                        Ok(())
-                    } else {
-                        Err(String::from_utf8_lossy(&o.stderr).trim().to_string())
-                    }
-                })
-        }
-    };
-    pip(&["--upgrade", "autotimm[all]"]).await?;
-    pip(&["--force-reinstall", "--no-deps", "--no-cache-dir", "autotimm"]).await
 }
 
 #[command]
@@ -536,14 +518,20 @@ pub async fn setup_python_env(project_path: String) -> Result<EnvSetupResult, St
     let expanded = expand_tilde(&project_path);
     let venv_path = std::path::PathBuf::from(&expanded).join(".venv");
 
+    // Older NightFlow builds made conda environments. Rebuild those with uv so
+    // every project uses the same, faster setup.
+    let replacing_conda = venv_path.join("conda-meta").is_dir();
+    if replacing_conda {
+        let _ = std::fs::remove_dir_all(&venv_path);
+    }
+
     // 1. A project-local .venv exists: keep the environment, but reinstall the
     //    latest AutoTimm on every sync so a resync never reuses an old version.
     if venv_path.exists() {
-        let is_conda_env = venv_path.join("conda-meta").is_dir();
-        let detected_env_type = if is_conda_env { "conda" } else { "uv" };
+        let detected_env_type = "uv";
 
         let (_, previous) = get_venv_versions(&venv_path).await;
-        let install = reinstall_autotimm(&expanded, &venv_path, is_conda_env).await;
+        let install = reinstall_autotimm(&expanded, &venv_path).await;
         let (python_version, autotimm_version) = get_venv_versions(&venv_path).await;
 
         return Ok(match (install, autotimm_version) {
@@ -581,70 +569,27 @@ pub async fn setup_python_env(project_path: String) -> Result<EnvSetupResult, St
         });
     }
 
-    // 2. No project env yet: always create one (conda if available, else uv),
-    //    even if the system Python already has AutoTimm, so every project runs
-    //    in its own environment with the latest AutoTimm.
+    // 2. No project env yet: always create one with uv, even if the system
+    //    Python already has AutoTimm or conda is installed. uv fetches its own
+    //    Python 3.12 and installs packages far faster than conda + pip.
     if venv_path.exists() {
         let _ = std::fs::remove_dir_all(&venv_path);
     }
 
-    if let Some(conda_bin) = resolve_conda_path().await {
-        let create_output = tokio::process::Command::new(&conda_bin)
-            .no_window()
-            .args(["create", "-p", ".venv", "python=3.12", "-y"])
-            .stdin(std::process::Stdio::null())
-            .current_dir(&expanded)
-            .output()
-            .await
-            .map_err(|e| format!("Failed to run conda create: {}", e))?;
-
-        if !create_output.status.success() {
-            let stderr = String::from_utf8_lossy(&create_output.stderr).to_string();
-            let _ = std::fs::remove_dir_all(&venv_path);
+    // Install uv first if it's missing (sync normally already did).
+    let uv_bin = match ensure_uv_available().await {
+        Ok(path) => path,
+        Err(err) => {
             return Ok(EnvSetupResult {
                 status: "error".to_string(),
-                message: format!("Failed to create conda env: {}", stderr),
+                message: format!("uv is required to create the Python environment: {}", err),
                 python_version: None,
                 autotimm_version: None,
                 env_type: None,
                 warning: None,
             });
         }
-
-        let install_output = tokio::process::Command::new(&conda_bin)
-            .no_window()
-            .args(["run", "-p", ".venv", "pip", "install", "--upgrade", "autotimm[all]"])
-            .stdin(std::process::Stdio::null())
-            .current_dir(&expanded)
-            .output()
-            .await
-            .map_err(|e| format!("Failed to run pip install via conda: {}", e))?;
-
-        if !install_output.status.success() {
-            let stderr = String::from_utf8_lossy(&install_output.stderr).to_string();
-            return Ok(EnvSetupResult {
-                status: "error".to_string(),
-                message: format!("Failed to install dependencies (conda): {}", stderr),
-                python_version: None,
-                autotimm_version: None,
-                env_type: None,
-                warning: None,
-            });
-        }
-
-        let (python_version, autotimm_version) = get_venv_versions(&venv_path).await;
-        return Ok(EnvSetupResult {
-            status: "created".to_string(),
-            message: "Environment created with conda and dependencies installed".to_string(),
-            python_version,
-            autotimm_version,
-            env_type: Some("conda".to_string()),
-            warning: None,
-        });
-    }
-
-    // Fall back to uv
-    let uv_bin = find_uv().unwrap_or_else(|| "uv".to_string());
+    };
 
     let _ = tokio::time::timeout(
         std::time::Duration::from_secs(120),
@@ -708,7 +653,11 @@ pub async fn setup_python_env(project_path: String) -> Result<EnvSetupResult, St
     let (python_version, autotimm_version) = get_venv_versions(&venv_path).await;
     Ok(EnvSetupResult {
         status: "created".to_string(),
-        message: "Virtual environment created with uv and dependencies installed".to_string(),
+        message: if replacing_conda {
+            "Replaced the old conda environment with a uv one and installed dependencies".to_string()
+        } else {
+            "Virtual environment created with uv and dependencies installed".to_string()
+        },
         python_version,
         autotimm_version,
         env_type: Some("uv".to_string()),
@@ -737,24 +686,6 @@ pub async fn ssh_setup_python_env(
     let script = format!(
         r#"export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 cd "{path}" || exit 1
-# Resolve the real conda binary (conda is a shell function, not on PATH in non-interactive SSH)
-_find_conda() {{
-  if [ -n "$CONDA_EXE" ] && [ -x "$CONDA_EXE" ]; then echo "$CONDA_EXE"; return 0; fi
-  for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile" "$HOME/.zshrc"; do
-    if [ -f "$rc" ]; then . "$rc" >/dev/null 2>&1; fi
-  done
-  if [ -n "$CONDA_EXE" ] && [ -x "$CONDA_EXE" ]; then echo "$CONDA_EXE"; return 0; fi
-  for p in \
-    "$HOME/miniconda3/bin/conda" "$HOME/miniconda3/condabin/conda" \
-    "$HOME/anaconda3/bin/conda" "$HOME/anaconda3/condabin/conda" \
-    "$HOME/miniforge3/bin/conda" "$HOME/miniforge3/condabin/conda" \
-    "$HOME/mambaforge/bin/conda" "$HOME/mambaforge/condabin/conda" \
-    "/opt/conda/bin/conda" "/usr/local/bin/conda"; do
-    if [ -x "$p" ]; then echo "$p"; return 0; fi
-  done
-  return 1
-}}
-CONDA_BIN=$(_find_conda)
 ej() {{ printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' '; }}
 jout() {{
   local s="$1" m="$2" pv="$3" av="$4" w="$5"
@@ -764,6 +695,9 @@ jout() {{
   [ -n "$w" ] && w="\"$(ej "$w")\"" || w=null
   printf '{{"status":"%s","message":"%s","python_version":%s,"autotimm_version":%s,"warning":%s}}\n' "$s" "$m" "$pv" "$av" "$w"
 }}
+# Older NightFlow builds made conda environments; rebuild those with uv.
+REPLACED_CONDA=""
+if [ -d .venv/conda-meta ]; then rm -rf .venv; REPLACED_CONDA=1; fi
 if [ -d .venv ]; then
   # Keep the environment, but reinstall the latest AutoTimm on every sync.
   # Only AutoTimm is forced; dependencies upgrade only if it needs them.
@@ -774,10 +708,6 @@ if [ -d .venv ]; then
     RC=$?
   else
     INSTALL_ERR="uv not found"; RC=1
-  fi
-  if [ $RC -ne 0 ] && [ -d .venv/conda-meta ]; then
-    INSTALL_ERR=$(.venv/bin/python -m pip install --upgrade 'autotimm[all]' </dev/null 2>&1 && .venv/bin/python -m pip install --force-reinstall --no-deps --no-cache-dir autotimm </dev/null 2>&1)
-    RC=$?
   fi
   AV=$(.venv/bin/python -c "import autotimm; print(autotimm.__version__)" 2>/dev/null)
   if [ -z "$AV" ]; then
@@ -790,38 +720,29 @@ if [ -d .venv ]; then
     jout exists "Reinstalled autotimm $AV" "$PV" "$AV"
   fi
 else
-  # No project env yet: always create one, even if the system Python has AutoTimm.
+  # No project env yet: always create one with uv, even if the system Python
+  # has AutoTimm or conda is installed. uv fetches its own Python 3.12.
   rm -rf .venv 2>/dev/null
-  if [ -n "$CONDA_BIN" ]; then
-    CONDA_ERR=$("$CONDA_BIN" create -p .venv python=3.12 -y </dev/null 2>&1)
-    if [ $? -ne 0 ]; then
-      rm -rf .venv 2>/dev/null
-      jout error "Failed to create conda env: $CONDA_ERR" "" ""
-      exit 0
-    fi
-    PIP_ERR=$("$CONDA_BIN" run -p .venv pip install --upgrade 'autotimm[all]' </dev/null 2>&1)
-    if [ $? -ne 0 ]; then
-      jout error "Failed to install dependencies (conda): $PIP_ERR" "" ""
-      exit 0
-    fi
-    PV=$(.venv/bin/python --version 2>/dev/null | sed 's/Python //')
-    AV=$(.venv/bin/python -c "import autotimm; print(autotimm.__version__)" 2>/dev/null)
-    jout created "Environment created with conda and dependencies installed" "$PV" "$AV"
+  if ! command -v uv >/dev/null 2>&1; then
+    jout error "uv is required to create the Python environment but was not found on the remote machine" "" ""
+    exit 0
+  fi
+  VENV_ERR=$(uv venv .venv --python 3.12 2>&1)
+  if [ $? -ne 0 ]; then
+    rm -rf .venv 2>/dev/null
+    jout error "Failed to create venv: $VENV_ERR" "" ""
+    exit 0
+  fi
+  PIP_ERR=$(uv pip install --upgrade --refresh-package autotimm 'autotimm[all]' --python .venv/bin/python 2>&1)
+  if [ $? -ne 0 ]; then
+    jout error "Failed to install dependencies: $PIP_ERR" "" ""
+    exit 0
+  fi
+  PV=$(.venv/bin/python --version 2>/dev/null | sed 's/Python //')
+  AV=$(.venv/bin/python -c "import autotimm; print(autotimm.__version__)" 2>/dev/null)
+  if [ -n "$REPLACED_CONDA" ]; then
+    jout created "Replaced the old conda environment with a uv one and installed dependencies" "$PV" "$AV"
   else
-    uv python install 3.12 >/dev/null 2>&1
-    VENV_ERR=$(uv venv .venv --python 3.12 2>&1)
-    if [ $? -ne 0 ]; then
-      rm -rf .venv 2>/dev/null
-      jout error "Failed to create venv: $VENV_ERR" "" ""
-      exit 0
-    fi
-    PIP_ERR=$(uv pip install --upgrade --refresh-package autotimm 'autotimm[all]' --python .venv/bin/python 2>&1)
-    if [ $? -ne 0 ]; then
-      jout error "Failed to install dependencies: $PIP_ERR" "" ""
-      exit 0
-    fi
-    PV=$(.venv/bin/python --version 2>/dev/null | sed 's/Python //')
-    AV=$(.venv/bin/python -c "import autotimm; print(autotimm.__version__)" 2>/dev/null)
     jout created "Virtual environment created with uv and dependencies installed" "$PV" "$AV"
   fi
 fi"#,

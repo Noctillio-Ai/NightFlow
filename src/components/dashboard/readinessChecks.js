@@ -1,7 +1,6 @@
 import {
   datasetPathStatus,
   datasetValidation,
-  condaInfo,
   uvInfo,
   envInfo,
 } from "../../state/dashboard.js";
@@ -22,7 +21,7 @@ function parentDir(path) {
   return cut > 0 ? trimmed.slice(0, cut) : "";
 }
 
-/** "conda 26.1.1" → "26.1.1" (the tile label already says which tool). */
+/** "uv 0.4.18" → "0.4.18" (the tile label already says which tool). */
 const stripTool = (version, tool) => String(version).replace(new RegExp(`^${tool}\\s+`, "i"), "");
 
 /**
@@ -79,16 +78,14 @@ export function collectChecks(project) {
     });
   }
 
-  const conda = condaInfo.value;
-  const uv = uvInfo.value;
-  const pkg = conda?.installed ? conda : uv;
+  const pkg = uvInfo.value;
   if (pkg) {
     checks.push({
       key: "pkg",
       kind: "pkg",
-      label: conda?.installed ? "conda" : "uv",
+      label: "uv",
       value: pkg.installed ? pkg.version || "installed" : pkg.message,
-      primary: pkg.installed ? stripTool(pkg.version || "Installed", conda?.installed ? "conda" : "uv") : "Not installed",
+      primary: pkg.installed ? stripTool(pkg.version || "Installed", "uv") : "Not installed",
       detail: pkg.installed ? "Package manager" : pkg.message || "",
       tag: pkg.installed ? "Ready" : "Missing",
       state: pkg.installed ? "ok" : "err",
