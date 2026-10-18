@@ -8,6 +8,8 @@
 //      detached with our own pid so it waits for us to quit, then exit the app.
 //      The detached script replaces /Applications/NightFlow.app and relaunches it.
 
+// Only the macOS/Linux branches write the installer via `write_all`.
+#[cfg(unix)]
 use std::io::Write;
 use std::process::Command;
 

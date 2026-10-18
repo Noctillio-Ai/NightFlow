@@ -93,10 +93,6 @@ export function CompareRunsView() {
 
     return (
         <div class="run-detail-view compare-runs-view">
-            <button class="run-detail-back" onClick={() => navigate("experiments")}>
-                &larr; Back to Experiments
-            </button>
-
             <div class="run-detail-header">
                 <h2>Comparing {selectedRuns.length} Runs</h2>
             </div>

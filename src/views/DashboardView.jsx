@@ -1,122 +1,59 @@
-import { useState, useEffect, useRef, useCallback } from "preact/hooks";
-import { SummaryCard } from "../components/SummaryCard.jsx";
+import { useState, useEffect } from "preact/hooks";
 import { TrainingPanel } from "../components/TrainingPanel.jsx";
-import { SystemMetricsPanel, GpuMetricsPanel } from "../components/SystemMetricsPanel.jsx";
-import SyncLogsPanel from "../components/SyncLogsPanel.jsx";
+import { Card, Dot } from "../components/dashboard/Card.jsx";
+import { ProjectHero } from "../components/dashboard/ProjectHero.jsx";
+import { WorkspaceBanner } from "../components/dashboard/WorkspaceBanner.jsx";
+import { ResultsCard } from "../components/dashboard/ResultsCard.jsx";
+import { RecentRunsCard } from "../components/dashboard/RecentRunsCard.jsx";
+import { MachineHealth } from "../components/dashboard/MachineHealth.jsx";
+import { MetricChart } from "../components/dashboard/MetricChart.jsx";
+import { ConnectCard } from "../components/dashboard/ConnectCard.jsx";
+import { SyncPanel } from "../components/dashboard/SyncPanel.jsx";
+import {
+  CheckCircleIcon,
+  CropIcon,
+  CubeIcon,
+  DatabaseIcon,
+  FlaskIcon,
+  PlayIcon,
+  SlidersIcon,
+  TerminalIcon,
+} from "../components/dashboard/icons.jsx";
+import { useSystemMetrics } from "../hooks/useSystemMetrics.js";
 import {
   stats,
-  sshInfo,
-  toggleSshConnection,
-  sshConnecting,
   sshConnected,
   sshConnectionError,
   clearSshConnectionError,
   dashboardSynced,
   dashboardSyncing,
-  syncDashboard,
-  syncProgress,
   syncShowingCompletion,
-  syncLogs,
   datasetPathStatus,
   datasetValidation,
-  condaInfo,
-  uvInfo,
   envInfo,
   syncConfig,
   platform,
 } from "../state/dashboard.js";
 import { currentProject } from "../state/projects.js";
-import { getTrainingReadiness } from "../utils/trainingReadiness.js";
 import { navigate } from "../state/router.js";
-import { startTraining, trainingActive } from "../state/training.js";
-import { projectRuns } from "../state/experiments.js";
+import { getTrainingReadiness } from "../utils/trainingReadiness.js";
+import {
+  startTraining,
+  trainingActive,
+  trainingEpoch,
+  trainingMaxEpochs,
+  trainingProgress,
+  trainingLossCurve,
+  trainingAccCurve,
+} from "../state/training.js";
+import { projectRuns, resolveBackboneName } from "../state/experiments.js";
 import { addToQueue, projectQueue, removeFromQueue, queueLength } from "../state/queue.js";
-
-function SshStatusBanner() {
-  const info = sshInfo.value;
-  const connecting = sshConnecting.value;
-  if (!info) return null;
-
-  const elapsed = info.connectedAt
-    ? Math.floor((Date.now() - new Date(info.connectedAt).getTime()) / 60000)
-    : 0;
-  const uptime =
-    elapsed >= 60
-      ? `${Math.floor(elapsed / 60)}h ${elapsed % 60}m`
-      : `${elapsed}m`;
-
-  const bannerClass = `ssh-status-banner ${connecting
-    ? "ssh-connecting"
-    : info.connected
-      ? "ssh-connected"
-      : "ssh-disconnected"
-    }`;
-  const statusLabel = connecting
-    ? "Connecting..."
-    : info.connected
-      ? "Connected"
-      : "Disconnected";
-  const buttonLabel = connecting
-    ? "Connecting..."
-    : info.connected
-      ? "Disconnect"
-      : "Connect";
-
-  return (
-    <div class={bannerClass}>
-      {connecting ? (
-        <div class="ssh-status-spinner" />
-      ) : (
-        <div class="ssh-status-dot" />
-      )}
-      <div class="ssh-status-info">
-        <span class="ssh-status-label">{statusLabel}</span>
-        <span class="ssh-status-host">{info.host}</span>
-      </div>
-      {info.connected && !connecting && (
-        <span class="ssh-status-uptime">
-          Uptime: {uptime}
-          {info.lastActivity && (() => {
-            const idle = Math.floor((Date.now() - new Date(info.lastActivity).getTime()) / 60000);
-            return idle >= 1 ? ` · Idle: ${idle >= 60 ? `${Math.floor(idle / 60)}h ${idle % 60}m` : `${idle}m`}` : null;
-          })()}
-        </span>
-      )}
-      <button
-        class={`ssh-toggle-btn ${info.connected ? "ssh-toggle-disconnect" : ""}`}
-        onClick={toggleSshConnection}
-        disabled={connecting}
-      >
-        {connecting && (
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="ssh-btn-spinner"
-          >
-            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-          </svg>
-        )}
-        {buttonLabel}
-      </button>
-    </div>
-  );
-}
-
-const icons = {
-  total: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>`,
-  running: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
-  accuracy: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>`,
-  testAccuracy: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
-};
+import { useEscape } from "../hooks/useEscape.js";
+import { runSeries, baseName } from "../utils/runCurves.js";
 
 function SshErrorModal() {
   const error = sshConnectionError.value;
+  useEscape(!!error, clearSshConnectionError);
   if (!error) return null;
 
   return (
@@ -130,6 +67,7 @@ function SshErrorModal() {
           <button
             class="modal-close-btn"
             onClick={() => clearSshConnectionError()}
+            aria-label="Close"
           >
             <svg
               width="18"
@@ -165,7 +103,7 @@ function SshErrorModal() {
           </div>
           <p class="ssh-error-message">{error.message}</p>
           {error.message && (
-            <p class="ssh-error-hint" style="color:var(--text-muted);font-size:0.82rem;margin-top:8px">
+            <p class="ssh-error-hint">
               {/timed?\s*out|timeout/i.test(error.message)
                 ? "Check that the host is reachable and the SSH port (default 22) is open."
                 : /refused/i.test(error.message)
@@ -188,408 +126,6 @@ function SshErrorModal() {
         </div>
       </div>
     </div>
-  );
-}
-
-function DatasetStatusBanner() {
-  const project = currentProject.value;
-  const status = datasetPathStatus.value;
-  const validation = datasetValidation.value;
-  if (!project) return null;
-
-  const fmt = project.datasetFormat;
-  const usesSplitFiles = fmt === "CSV" || fmt === "JSONL";
-
-  const paths = [];
-  if (usesSplitFiles) {
-    if (project.trainPath)
-      paths.push({
-        label: "Train",
-        path: project.trainPath,
-        exists: status.trainPath,
-      });
-    if (project.valPath)
-      paths.push({
-        label: "Validation",
-        path: project.valPath,
-        exists: status.valPath,
-      });
-    if (project.testPath)
-      paths.push({
-        label: "Test",
-        path: project.testPath,
-        exists: status.testPath,
-      });
-  } else {
-    if (project.folderPath)
-      paths.push({
-        label: "Dataset Folder",
-        path: project.folderPath,
-        exists: status.folderPath,
-      });
-  }
-
-  if (paths.length === 0) return null;
-
-  // Determine overall structure status for the folder path row
-  const structureValid = validation?.valid;
-  const structureErrors = validation?.errors || [];
-  const structureWarnings = validation?.warnings || [];
-  const structureInfo = validation?.info || {};
-
-  // Build info chips from validation stats
-  const infoChips = [];
-  if (structureInfo.classes) infoChips.push(`${structureInfo.classes} classes`);
-  if (structureInfo.images) infoChips.push(`${structureInfo.images} images`);
-  if (structureInfo.masks) infoChips.push(`${structureInfo.masks} masks`);
-  if (structureInfo.categories) infoChips.push(`${structureInfo.categories} categories`);
-  if (structureInfo.splits) infoChips.push(`splits: ${structureInfo.splits}`);
-
-  return (
-    <div class="dataset-status-banner">
-      <div class="dataset-status-header">
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-        </svg>
-        <span>Dataset Paths</span>
-      </div>
-      <div class="dataset-status-items">
-        {paths.map((p) => (
-          <div class="dataset-status-item" key={p.label}>
-            <span
-              class={`dataset-status-dot ${p.exists === true ? "found" : p.exists === false ? "missing" : "unknown"}`}
-            />
-            <span class="dataset-status-label">{p.label}</span>
-            <span class="dataset-status-path">{p.path}</span>
-            <span
-              class={`dataset-status-tag ${p.exists === true ? "found" : p.exists === false ? "missing" : "unknown"}`}
-            >
-              {p.exists === true
-                ? "Found"
-                : p.exists === false
-                  ? "Not Found"
-                  : "—"}
-            </span>
-          </div>
-        ))}
-        {validation && !usesSplitFiles && (
-          <div class={`dataset-status-item ${structureValid ? "" : "dataset-status-item--invalid"}`}>
-            <span
-              class={`dataset-status-dot ${structureValid ? "found" : "missing"}`}
-            />
-            <span class="dataset-status-label">Structure</span>
-            <span class="dataset-status-path">
-              {structureValid
-                ? infoChips.join(" · ") || "Valid"
-                : structureErrors[0] || "Invalid structure"}
-            </span>
-            <span
-              class={`dataset-status-tag ${structureValid ? "found" : "missing"}`}
-            >
-              {structureValid ? "Valid" : "Invalid"}
-            </span>
-          </div>
-        )}
-      </div>
-      {!usesSplitFiles && structureErrors.length > 1 && (
-        <div class="dataset-validation-details">
-          {structureErrors.slice(1).map((e, i) => (
-            <div key={`e${i}`} class="dataset-validation-line dataset-validation-error">{e}</div>
-          ))}
-        </div>
-      )}
-      {!usesSplitFiles && structureWarnings.length > 0 && (
-        <div class="dataset-validation-details">
-          {structureWarnings.map((w, i) => (
-            <div key={`w${i}`} class="dataset-validation-line dataset-validation-warn">{w}</div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EnvStatusBanner() {
-  const conda = condaInfo.value;
-  const uv = uvInfo.value;
-  const info = envInfo.value;
-  if (!conda && !uv && !info) return null;
-
-  const isError = info?.status === "error";
-  const dotClass = isError ? "missing" : "found";
-  const tagClass = isError ? "missing" : "found";
-
-  // Show conda if available, otherwise show uv
-  const pkgManager = conda?.installed ? conda : uv;
-  const pkgManagerLabel = conda?.installed ? "conda" : "uv";
-
-  return (
-    <div class="dataset-status-banner">
-      <div class="dataset-status-header">
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-        </svg>
-        <span>Python Environment</span>
-      </div>
-      <div class="dataset-status-items">
-        {pkgManager && (
-          <div class="dataset-status-item">
-            <span
-              class={`dataset-status-dot ${pkgManager.installed ? "found" : "missing"}`}
-            />
-            <span class="dataset-status-label">{pkgManagerLabel}</span>
-            <span class="dataset-status-path">
-              {pkgManager.installed
-                ? pkgManager.version || "installed"
-                : pkgManager.message}
-            </span>
-            <span
-              class={`dataset-status-tag ${pkgManager.installed ? "found" : "missing"}`}
-            >
-              {pkgManager.installed ? "Ready" : "Missing"}
-            </span>
-          </div>
-        )}
-        {info &&
-          (isError ? (
-            <div class="dataset-status-item">
-              <span class={`dataset-status-dot ${dotClass}`} />
-              <span class="dataset-status-label">Status</span>
-              <span class="dataset-status-path">{info.message}</span>
-              <span class={`dataset-status-tag ${tagClass}`}>Error</span>
-            </div>
-          ) : (
-            <>
-              <div class="dataset-status-item">
-                <span class={`dataset-status-dot ${dotClass}`} />
-                <span class="dataset-status-label">Python</span>
-                <span class="dataset-status-path">
-                  {info.pythonVersion || "unknown"}
-                </span>
-                <span class={`dataset-status-tag ${tagClass}`}>
-                  {info.status === "created"
-                    ? "Installed"
-                    : info.status === "system"
-                      ? "System"
-                      : "Ready"}
-                </span>
-              </div>
-              <div class="dataset-status-item">
-                <span
-                  class={`dataset-status-dot ${info.autotimmVersion ? "found" : "missing"}`}
-                />
-                <span class="dataset-status-label">AutoTimm</span>
-                <span class="dataset-status-path">
-                  {info.autotimmVersion || "not installed"}
-                </span>
-                <span
-                  class={`dataset-status-tag ${info.autotimmVersion ? "found" : "missing"}`}
-                >
-                  {info.autotimmVersion
-                    ? info.status === "created"
-                      ? "Installed"
-                      : info.status === "system"
-                        ? "System"
-                        : "Ready"
-                    : "Missing"}
-                </span>
-              </div>
-            </>
-          ))}
-      </div>
-    </div>
-  );
-}
-
-function EnvironmentDropdown() {
-  const [open, setOpen] = useState(false);
-  const bodyRef = useRef(null);
-
-  return (
-    <div class="env-dropdown">
-      <button class="env-dropdown-toggle" onClick={() => setOpen(!open)}>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-        <span>Dataset & Environment</span>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          class={`env-dropdown-chevron${open ? " env-dropdown-chevron--open" : ""}`}
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      <div
-        class={`env-dropdown-body${open ? " env-dropdown-body--open" : ""}`}
-        ref={bodyRef}
-        style={open && bodyRef.current ? { maxHeight: bodyRef.current.scrollHeight + "px" } : {}}
-      >
-        <div class="env-dropdown-inner">
-          <DatasetStatusBanner />
-          <EnvStatusBanner />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ProgressCircle({ percentage }) {
-  const circumference = 2 * Math.PI * 45; // radius = 45
-  const dashOffset = circumference - (percentage / 100) * circumference;
-
-  return (
-    <div class="progress-circle-container" role="progressbar" aria-label="Project sync progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percentage)}>
-      <svg
-        width="80"
-        height="80"
-        viewBox="0 0 100 100"
-        class="progress-circle-svg"
-      >
-        <circle
-          cx="50"
-          cy="50"
-          r="45"
-          fill="none"
-          stroke="var(--sync-progress-bg)"
-          stroke-width="3"
-        />
-        <circle
-          cx="50"
-          cy="50"
-          r="45"
-          fill="none"
-          stroke="var(--sync-progress-fill)"
-          stroke-width="3"
-          stroke-dasharray={circumference}
-          stroke-dashoffset={dashOffset}
-          stroke-linecap="round"
-          class="progress-circle-svg-fill"
-        />
-      </svg>
-      <span class="progress-circle-text">{Math.round(percentage)}%</span>
-    </div>
-  );
-}
-
-function SyncScreen() {
-  const syncing = dashboardSyncing.value;
-  const progress = syncProgress.value;
-  const showingCompletion = syncShowingCompletion.value;
-  const logs = syncLogs.value;
-  const latestLog = logs.length > 0 ? logs[logs.length - 1] : null;
-
-  return (
-    <div class="dashboard-sync-screen">
-      <div class="dashboard-sync-card">
-        <div
-          class={`dashboard-sync-icon${syncing ? " dashboard-sync-icon--spinning" : ""}`}
-        >
-          <svg
-            width="40"
-            height="40"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M23 4v6h-6" />
-            <path d="M1 20v-6h6" />
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-          </svg>
-        </div>
-        <h2 class="dashboard-sync-title">Sync Project Data</h2>
-        <p class="dashboard-sync-desc">
-          Scan the project directory for MLflow runs, parse metrics and
-          checkpoints, and import them into the local database.
-        </p>
-        {syncing || showingCompletion ? (
-          <ProgressCircle percentage={progress} />
-        ) : (
-          <button class="dashboard-sync-btn" onClick={syncDashboard}>
-            Sync
-          </button>
-        )}
-        {(syncing || showingCompletion) && (
-          <div class="sync-progress-section">
-            <div class="sync-progress-bar-track">
-              <div
-                class="sync-progress-bar-fill"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            {latestLog && (
-              <p class={`sync-progress-step sync-step-${latestLog.type}`}>
-                {latestLog.message}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ResyncButton() {
-  const syncing = dashboardSyncing.value;
-  return (
-    <button
-      class={`resync-fab${syncing ? " resync-fab--spinning" : ""}`}
-      onClick={syncDashboard}
-      disabled={syncing}
-      title="Re-sync project data"
-    >
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M23 4v6h-6" />
-        <path d="M1 20v-6h6" />
-        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-      </svg>
-    </button>
   );
 }
 
@@ -625,7 +161,7 @@ function buildTestCommand(project) {
   return buildStepsCommand(project, "test");
 }
 
-// Human-readable version shown in the Power User command preview.
+// Human-readable version shown in the dashboard's command preview.
 function buildCommandDisplay(project, steps = "fit+test") {
   const env = envInfo.value;
   const useVenv = env && (env.status === "exists" || env.status === "created");
@@ -654,9 +190,49 @@ function buildCommandDisplay(project, steps = "fit+test") {
   return cmds.join(" &&\n");
 }
 
-function StartTrainingButton() {
+const modKey = typeof navigator !== "undefined" && navigator.platform.includes("Mac") ? "\u2318" : "Ctrl";
+
+const ACCELERATORS = { cuda: "CUDA", mps: "Apple Metal", cpu: "CPU", auto: "Auto device" };
+
+function deviceLabel(project) {
+  const accel = project.accelerator || (project.gpuDevices?.trim() ? "cuda" : "auto");
+  const ids = project.gpuDevices?.trim();
+  if (accel === "cuda" && ids) return `CUDA · GPU${ids.includes(",") ? "s" : ""} ${ids}`;
+  return ACCELERATORS[accel] || accel;
+}
+
+function readinessState(readiness, active) {
+  if (active) return "live";
+  return readiness.blocked ? "err" : "ok";
+}
+
+/** The newest run that has any per-epoch history to chart. */
+function latestChartableRun(runs) {
+  return [...runs]
+    .sort((a, b) => new Date(b.created) - new Date(a.created))
+    .map((run) => ({ run, series: runSeries(run) }))
+    .find(({ series }) => series.trainLoss.length || series.valLoss.length || series.valAcc.length);
+}
+
+function ConfigTile({ icon, label, value, hint }) {
+  return (
+    <div class="dash-config">
+      <span class="dash-config-icon">{icon}</span>
+      <div class="dash-config-body">
+        <span class="dash-config-label">{label}</span>
+        <span class="dash-config-value" title={typeof value === "string" ? value : undefined}>
+          {value}
+          {hint && <small>{hint}</small>}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ExperimentCard() {
   const project = currentProject.value;
   const active = trainingActive.value;
+  const [tab, setTab] = useState("loss");
   if (!project) return null;
 
   const command = buildTrainingCommand(project);
@@ -664,8 +240,8 @@ function StartTrainingButton() {
   const commandDisplay = buildCommandDisplay(project);
   const testCommandDisplay = buildCommandDisplay(project, "test");
   const validation = datasetValidation.value;
-  const datasetInvalid = validation && !validation.valid;
-  const readiness = getTrainingReadiness({ project, validation, pathStatus: datasetPathStatus.value, environment: envInfo.value, active });
+  const env = envInfo.value;
+  const readiness = getTrainingReadiness({ project, validation, pathStatus: datasetPathStatus.value, environment: env, active });
 
   const handleTrainClick = async () => {
     const runId = crypto.randomUUID();
@@ -697,281 +273,240 @@ function StartTrainingButton() {
     const latestRun = completed[0];
     if (!latestRun) return;
 
-    // Write config with the completed run's ID so autotimm test finds the checkpoint
-    const runId = crypto.randomUUID();
+    // Evaluate under the completed run's ID: config.yaml points AutoTimm at its
+    // checkpoint, and the test results are saved onto that run.
     try {
       await syncConfig(project, project.id, latestRun.id);
-      await startTraining(testCommand, project.projectPath, runId, { testOnly: true, projectId: project.id });
+      await startTraining(testCommand, project.projectPath, latestRun.id, { testOnly: true, projectId: project.id });
     } catch (error) { alert(`Could not start evaluation: ${error.message || error}`); }
   };
 
+  // Chart source: the live run while training, otherwise the newest run with history.
+  const latest = active ? null : latestChartableRun(projectRuns.value);
+  const series = active
+    ? { trainLoss: trainingLossCurve.value || [], valLoss: [], valAcc: trainingAccCurve.value || [] }
+    : latest?.series || { trainLoss: [], valLoss: [], valAcc: [] };
+  const chartCaption = active ? "Live" : latest ? latest.run.name || latest.run.id : null;
+
+  const datasetPath = project.folderPath || project.trainPath;
+  const classes = validation?.info?.classes || project.numClasses;
+  const maxEpochs = active ? trainingMaxEpochs.value || project.maxEpochs || 10 : project.maxEpochs || 10;
+  const epochNow = Math.min(maxEpochs, (trainingEpoch.value || 0) + 1);
+  const progress = active ? trainingProgress.value : 0;
+
   return (
-    <div class="start-training-section">
-      <div class="start-training-heading">
-        <div class="start-training-label">Launch your next experiment</div>
-        <span class="training-readiness" role="status">{readiness.label}</span>
+    <Card
+      class="dash-experiment"
+      icon={<FlaskIcon size={18} />}
+      title="Current experiment"
+      aside={
+        <>
+          <span class="dash-state" role="status">
+            <Dot state={readinessState(readiness, active)} />
+            {active ? "Training" : readiness.blocked ? readiness.label : "Ready to train"}
+          </span>
+          <span class="dash-chip dash-chip--sm">{deviceLabel(project)}</span>
+        </>
+      }
+    >
+      <div class="dash-config-row">
+        <ConfigTile icon={<CubeIcon size={18} />} label="Model" value={resolveBackboneName(project)} />
+        <ConfigTile
+          icon={<DatabaseIcon size={18} />}
+          label="Dataset"
+          value={baseName(datasetPath) || "—"}
+          hint={classes ? `${classes} classes` : null}
+        />
+        <ConfigTile
+          icon={<CropIcon size={18} />}
+          label="Image size"
+          value={project.imageSize ? `${project.imageSize} × ${project.imageSize}` : "Default"}
+        />
       </div>
-      <p class="start-training-description" id="training-readiness-detail">{readiness.detail}</p>
-      {project.powerUserMode && (
-        <div class="start-training-cmd-preview">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="start-training-cmd-icon"
-          >
-            <polyline points="4 17 10 11 4 5" />
-            <line x1="12" y1="19" x2="20" y2="19" />
-          </svg>
-          <span style="white-space: pre-wrap; word-break: break-word; min-width: 0;">{commandDisplay}</span>
+
+      <div class="dash-params">
+        <div class="dash-param dash-param--epoch">
+          <span class="dash-param-label">{active ? "Epoch" : "Epochs"}</span>
+          {active ? (
+            <>
+              <span class="dash-param-value">{epochNow} <small>/ {maxEpochs}</small></span>
+              <div class="dash-progress">
+                <div class="dash-bar dash-bar--ok"><div class="dash-bar-fill" style={{ width: `${progress}%` }} /></div>
+                <span>{progress}%</span>
+              </div>
+            </>
+          ) : (
+            <span class="dash-param-value">{maxEpochs} <small>planned</small></span>
+          )}
         </div>
-      )}
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button
-          class="start-training-btn"
-          onClick={handleTrainClick}
-          disabled={readiness.blocked}
-          title={readiness.blocked ? readiness.detail : undefined}
-          aria-describedby="training-readiness-detail"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
-          Start Training
-        </button>
-        {stats.value.completed > 0 && (
-          <button
-            class="start-test-btn"
-            onClick={handleTestClick}
-            disabled={active}
-            title={active ? "A training run is already active" : project.powerUserMode ? testCommandDisplay : "Run evaluation only"}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
-            Run Test
+        <div class="dash-param">
+          <span class="dash-param-label">Batch size</span>
+          <span class="dash-param-value">{project.batchSize || <small>Default</small>}</span>
+        </div>
+        <div class="dash-param">
+          <span class="dash-param-label">Learning rate</span>
+          <span class="dash-param-value">{project.learningRate || <small>Default</small>}</span>
+        </div>
+        <div class="dash-param">
+          <span class="dash-param-label">Optimizer</span>
+          <span class="dash-param-value">{project.optimizer || <small>Default</small>}</span>
+        </div>
+      </div>
+
+      <div class="dash-chart-block">
+        <div class="dash-tabs" role="tablist">
+          <button role="tab" aria-selected={tab === "loss"} class={`dash-tab${tab === "loss" ? " dash-tab--active" : ""}`} onClick={() => setTab("loss")}>
+            Training loss
           </button>
+          <button role="tab" aria-selected={tab === "acc"} class={`dash-tab${tab === "acc" ? " dash-tab--active" : ""}`} onClick={() => setTab("acc")}>
+            Validation accuracy
+          </button>
+          <div class="dash-legend">
+            {chartCaption && <span class="dash-chart-sub">{chartCaption}</span>}
+            {tab === "loss" ? (
+              <>
+                {series.trainLoss.length > 0 && <span><i style={{ background: "#3b82f6" }} />Train loss</span>}
+                {series.valLoss.length > 0 && <span><i style={{ background: "#8b5cf6" }} />Val loss</span>}
+              </>
+            ) : (
+              series.valAcc.length > 0 && <span><i style={{ background: "#22c55e" }} />Val accuracy</span>
+            )}
+          </div>
+        </div>
+        {tab === "loss" ? (
+          <MetricChart
+            height={180}
+            series={[
+              { label: "Train loss", data: series.trainLoss, color: "#3b82f6" },
+              { label: "Val loss", data: series.valLoss, color: "#8b5cf6" },
+            ]}
+            yFormat={(v) => v.toFixed(Math.abs(v) >= 10 ? 1 : 3)}
+            tickFormat={(v) => String(Number(v.toFixed(2)))}
+            empty={active ? "Waiting for the first epoch…" : "Loss curves appear after your first run"}
+          />
+        ) : (
+          <MetricChart
+            height={180}
+            series={[{ label: "Val accuracy", data: series.valAcc, color: "#22c55e", area: true }]}
+            yDomain={[0, 1]}
+            yFormat={(v) => `${(v * 100).toFixed(v === 0 || v === 1 || v === 0.5 ? 0 : 1)}%`}
+            empty={active ? "Waiting for the first validation pass…" : "Accuracy appears after your first run"}
+          />
         )}
-        {active && (
+      </div>
+
+      <details class="dash-command">
+        <summary><TerminalIcon size={14} /> Training command</summary>
+        <code>{commandDisplay}</code>
+      </details>
+
+      {readiness.blocked && !active && (
+        <div class="dash-note dash-note--err" id="training-readiness-detail">{readiness.detail}</div>
+      )}
+
+      <div class="dash-actions">
+        {active ? (
           <button
-            class="export-btn"
+            class="dash-btn dash-btn--primary dash-btn--lg"
             onClick={() => {
               const runId = crypto.randomUUID();
               addToQueue(project.id, { command, cwd: project.projectPath, runId });
             }}
           >
-            + Add to Queue
+            + Add to queue
+          </button>
+        ) : (
+          <button
+            class="dash-btn dash-btn--primary dash-btn--lg"
+            onClick={handleTrainClick}
+            disabled={readiness.blocked}
+            title={readiness.blocked ? readiness.detail : `Start training (${modKey}+Enter)`}
+            aria-describedby={readiness.blocked ? "training-readiness-detail" : undefined}
+          >
+            <PlayIcon size={16} />
+            Start training
+            <kbd class="dash-kbd">{modKey}↵</kbd>
           </button>
         )}
+        {stats.value.completed > 0 && (
+          <button
+            class="dash-btn dash-btn--outline"
+            onClick={handleTestClick}
+            disabled={active}
+            title={active ? "A training run is already active" : testCommandDisplay}
+          >
+            <CheckCircleIcon size={16} />
+            Run test
+          </button>
+        )}
+        <button class="dash-btn dash-btn--outline dash-actions-end" onClick={() => navigate("experiments")}>
+          <SlidersIcon size={16} />
+          Experiments
+        </button>
       </div>
       {queueLength.value > 0 && (
-        <span class="queue-indicator">Queue: {queueLength.value} remaining</span>
+        <span class="dash-muted">{queueLength.value} queued {queueLength.value === 1 ? "run" : "runs"} waiting</span>
       )}
-      {datasetInvalid && (
-        <div class="dataset-invalid-msg">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          Dataset structure has errors — fix them before training
-        </div>
-      )}
-    </div>
+    </Card>
+  );
+}
+
+function QueueCard() {
+  const queued = projectQueue.value.filter((q) => q.status === "queued");
+  if (queued.length === 0) return null;
+  return (
+    <Card class="dash-queue" title="Queued runs" aside={<span class="dash-muted">{queued.length} pending</span>}>
+      <ul class="dash-queue-list">
+        {queued.map((q, i) => (
+          <li key={q.id}>
+            <span class="dash-queue-index">#{i + 1}</span>
+            <span>Queued run</span>
+            <span class="dash-muted">
+              {new Date(q.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
+            <button class="dash-icon-btn" onClick={() => removeFromQueue(q.id)} title="Remove from queue" aria-label="Remove from queue">
+              &times;
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function Overview() {
+  const { metrics, error, retry } = useSystemMetrics();
+  return (
+    <>
+      <WorkspaceBanner />
+      <TrainingPanel />
+      <div class="dash-grid">
+        <ExperimentCard />
+        <ResultsCard />
+      </div>
+      <QueueCard />
+      <RecentRunsCard />
+      <MachineHealth metrics={metrics} error={error} onRetry={retry} />
+    </>
   );
 }
 
 export function DashboardView() {
-  const s = stats.value;
   const connected = sshConnected.value;
   const synced = dashboardSynced.value;
   const syncing = dashboardSyncing.value;
   const showingCompletion = syncShowingCompletion.value;
-  const isPowerUser = currentProject.value?.powerUserMode;
-  const [sharedMetrics, setSharedMetrics] = useState(null);
-  const handleMetrics = useCallback((m) => setSharedMetrics(m), []);
-  const [syncLogsOpen, setSyncLogsOpen] = useState(() => {
-    try { return localStorage.getItem("nf-sync-logs-open") === "true"; } catch { return false; }
-  });
-
-  // Persist syncLogsOpen preference
-  useEffect(() => {
-    try { localStorage.setItem("nf-sync-logs-open", String(syncLogsOpen)); } catch { /* ignore */ }
-  }, [syncLogsOpen]);
-
-  // Close sync logs drawer on Escape
-  useEffect(() => {
-    if (!syncLogsOpen) return;
-    function onKey(e) {
-      if (e.key === "Escape") setSyncLogsOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [syncLogsOpen]);
-
-  // Auto-open drawer when sync starts in power mode
-  useEffect(() => {
-    if (syncing && isPowerUser) setSyncLogsOpen(true);
-  }, [syncing, isPowerUser]);
+  const showOverview = connected && !syncing && !showingCompletion && synced;
 
   return (
-    <div class="dashboard-view">
-      <div class="dashboard-heading">
-        <div>
-          <span class="page-eyebrow">PROJECT OVERVIEW</span>
-          <h2>{currentProject.value?.name || "Your workspace"}</h2>
-          <p>Train, monitor, and explore your computer vision experiments.</p>
-        </div>
-        <button class="dashboard-settings-btn" onClick={() => navigate("settings")}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="3" fill="var(--bg-primary)" /><circle cx="15" cy="17" r="3" fill="var(--bg-primary)" />
-          </svg>
-          Project settings
-        </button>
-      </div>
-      <div class="dashboard-context" aria-label="Project configuration">
-        <span>{currentProject.value?.taskType || "Classification"}</span>
-        {currentProject.value?.datasetFormat && <span>{currentProject.value.datasetFormat} dataset</span>}
-        <span>{currentProject.value?.connectionType === "remote" ? "Remote compute" : "Local compute"}</span>
-      </div>
-      <SshStatusBanner />
+    <div class="dashboard-view dash">
+      <ProjectHero />
       {!connected ? (
-        <div class="dashboard-connect-card">
-          <div class="dashboard-connect-symbol" aria-hidden="true">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="12" rx="2" /><path d="M8 21h8M12 15v6M7 7l3 2-3 2M13 11h4" />
-            </svg>
-          </div>
-          <span class="page-eyebrow">LET’S GET STARTED</span>
-          <h3>Connect your workspace</h3>
-          <p>Connect to your compute environment to sync your dataset, check system resources, and launch a training run.</p>
-          <button class="dashboard-connect-btn" onClick={toggleSshConnection} disabled={sshConnecting.value}>
-            {sshConnecting.value ? "Connecting…" : "Connect workspace"}
-            <span aria-hidden="true">→</span>
-          </button>
-          <span class="dashboard-connect-hint">You can update your connection in project settings.</span>
-        </div>
-      ) : syncing || showingCompletion || !synced ? (
-        <SyncScreen />
+        <ConnectCard />
+      ) : !showOverview ? (
+        <SyncPanel />
       ) : (
-        <>
-          <div class="summary-grid">
-            <SummaryCard
-              label="Total Runs"
-              value={s.totalRuns}
-              icon={icons.total}
-            />
-            <SummaryCard
-              label="Running"
-              value={s.running}
-              icon={icons.running}
-              title={s.activeRunName ? `Active: ${s.activeRunName}` : undefined}
-            />
-            <SummaryCard
-              label="Best validation accuracy"
-              value={
-                s.bestAcc != null ? (s.bestAcc * 100).toFixed(1) + "%" : "—"
-              }
-              icon={icons.accuracy}
-            />
-            <SummaryCard
-              label="Best test accuracy"
-              value={
-                s.bestTestAcc != null ? (s.bestTestAcc * 100).toFixed(1) + "%" : "—"
-              }
-              icon={icons.testAccuracy}
-            />
-          </div>
-          <TrainingPanel />
-          {projectQueue.value.length > 0 && (
-            <div class="queue-section">
-              <div class="queue-section-title">Queued Runs</div>
-              <div class="queue-list">
-                {projectQueue.value
-                  .filter((q) => q.status === "queued")
-                  .map((q, i) => (
-                    <div key={q.id} class="queue-item">
-                      <div class="queue-item-info">
-                        <span class="queue-item-index">#{i + 1}</span>
-                        <span>Queued run</span>
-                        <span class="queue-item-time" style="color:var(--text-muted);font-size:0.75rem;margin-left:auto">
-                          {new Date(q.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                      <button
-                        class="queue-item-remove"
-                        onClick={() => removeFromQueue(q.id)}
-                        title="Remove from queue"
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          )}
-          {!trainingActive.value && <StartTrainingButton />}
-          <div class="dashboard-split">
-            <div class="dashboard-split-left">
-              <DatasetStatusBanner />
-              <EnvStatusBanner />
-            </div>
-            <div class="dashboard-split-right">
-              <SystemMetricsPanel onMetrics={handleMetrics} />
-            </div>
-          </div>
-          <GpuMetricsPanel metrics={sharedMetrics} />
-          <ResyncButton />
-        </>
-      )}
-      {/* Sync Logs — slide-over drawer */}
-      {syncLogsOpen && isPowerUser && (
-        <div class="sync-logs-drawer-overlay" onClick={() => setSyncLogsOpen(false)}>
-          <div class="sync-logs-drawer" onClick={(e) => e.stopPropagation()}>
-            <div class="sync-logs-drawer-header">
-              <h3 class="sync-logs-drawer-title">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.55">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                  <polyline points="10 9 9 9 8 9" />
-                </svg>
-                Sync Logs
-              </h3>
-              <button class="sync-logs-drawer-close" onClick={() => setSyncLogsOpen(false)} title="Close (Esc)">
-                ✕
-              </button>
-            </div>
-            <div class="sync-logs-drawer-body">
-              <SyncLogsPanel />
-            </div>
-          </div>
-        </div>
+        <Overview />
       )}
       <SshErrorModal />
     </div>

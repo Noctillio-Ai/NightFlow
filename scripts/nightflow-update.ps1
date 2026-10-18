@@ -49,10 +49,17 @@ if ($env:GITHUB_TOKEN) { $Headers['Authorization'] = "Bearer $($env:GITHUB_TOKEN
 function Write-Log  { param($m) Write-Host "[nightflow-update] $m" -ForegroundColor Cyan }
 function Write-Fail { param($m) Write-Host "[nightflow-update] $m" -ForegroundColor Red; exit 1 }
 
+# ---- Require Windows 11 -----------------------------------------------------
+# Windows support is in beta and limited to Windows 11 (build 22000+).
+$OsBuild = [Environment]::OSVersion.Version.Build
+if ($OsBuild -lt 22000) {
+    Write-Fail "NightFlow for Windows is in beta and requires Windows 11 (build 22000 or later). This PC is running build $OsBuild."
+}
+
 # ---- Detect architecture ----------------------------------------------------
 switch ($env:PROCESSOR_ARCHITECTURE) {
     'AMD64' { $ArchSlug = 'x64' }
-    'ARM64' { $ArchSlug = 'arm64' }
+    'ARM64' { $ArchSlug = 'x64' }   # only x64 builds are published; Windows 11 on ARM runs them under emulation
     'x86'   { $ArchSlug = 'x64' }
     default { Write-Fail "Unsupported architecture: $($env:PROCESSOR_ARCHITECTURE)" }
 }

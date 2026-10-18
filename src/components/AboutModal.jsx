@@ -1,10 +1,12 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { currentVersion } from "../state/update.js";
 import { platform } from "../state/dashboard.js";
+import { useEscape } from "../hooks/useEscape.js";
 
 const closeIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
 
 export function AboutModal({ open, onClose }) {
+  useEscape(open, onClose);
   if (!open) return null;
 
   return (
@@ -13,7 +15,7 @@ export function AboutModal({ open, onClose }) {
         class="modal-dialog about-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        <button class="about-modal-close" onClick={onClose}>
+        <button class="about-modal-close" onClick={onClose} aria-label="Close">
           <span dangerouslySetInnerHTML={{ __html: closeIcon }} />
         </button>
 

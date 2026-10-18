@@ -6,8 +6,10 @@ import {
   closeDeleteDialog,
   confirmDeleteProject,
 } from "../state/projects.js";
+import { useEscape } from "../hooks/useEscape.js";
 
 export function DeleteProjectDialog() {
+  useEscape(deleteDialogOpen.value, closeDeleteDialog);
   if (!deleteDialogOpen.value) return null;
 
   const project = deleteTarget.value;
@@ -32,7 +34,7 @@ export function DeleteProjectDialog() {
       <div class="delete-dialog">
         <div class="delete-dialog-header">
           <h2>Delete Project</h2>
-          <button class="wizard-close-btn" onClick={closeDeleteDialog}>
+          <button class="wizard-close-btn" onClick={closeDeleteDialog} aria-label="Close">
             &times;
           </button>
         </div>

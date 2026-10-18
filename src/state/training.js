@@ -5,6 +5,8 @@ import { currentProjectId, currentProject, projectList } from "./projects.js";
 import { addRun, updateRun, allRuns, generateRunName, resolveBackboneName } from "./experiments.js";
 import { processQueue } from "./queue.js";
 import { initNotifications, notify } from "../utils/notifications.js";
+import { pickTestAcc, toTestOnlyCommand, commandSteps } from "../utils/testMetrics.js";
+import { syncConfig } from "./dashboard.js";
 
 // Alias for backward compat within this file
 const _notify = notify;
@@ -30,6 +32,7 @@ const _defaultTraining = () => ({
   testTotalBatches: 0,
   error: null,
   testOnly: false, // true when running evaluation without training
+  pendingTest: null, // { command } — a reattached fit+test run still owes its test step
   fastDevRun: false,
   lossCurve: [],
   accCurve: [],
@@ -55,6 +58,10 @@ function _set(projectId, updates) {
 export const trainingActive = computed(
   () => _get(currentProjectId.value).active,
 );
+/** True while any project has a training/test process running. */
+export const anyTrainingActive = computed(() =>
+  Object.values(_trainingState.value).some((s) => s.active),
+);
 export const trainingReconnected = computed(
   () => _get(currentProjectId.value).reconnected,
 );
@@ -66,6 +73,7 @@ export const trainingMaxEpochs = computed(
 export const trainingStep = computed(() => _get(currentProjectId.value).step);
 export const trainingLoss = computed(() => _get(currentProjectId.value).loss);
 export const trainingLossCurve = computed(() => _get(currentProjectId.value).lossCurve);
+export const trainingAccCurve = computed(() => _get(currentProjectId.value).accCurve);
 export const trainingMetrics = computed(
   () => _get(currentProjectId.value).metrics,
 );
@@ -149,8 +157,11 @@ export async function startTraining(command, cwd, passedRunId, { testOnly = fals
   // can render fully even if log files are later deleted.
   _startingProjects.add(projectId);
   let runCreated = false;
+  // A test-only run evaluates an existing run's checkpoint, so its results
+  // belong on that run rather than on a new record.
+  const attachToExisting = testOnly && allRuns.value.some((r) => r.id === runId);
   try {
-  await addRun({
+  if (!attachToExisting) await addRun({
     id: runId,
     name: runName,
     projectId,
@@ -174,7 +185,7 @@ export async function startTraining(command, cwd, passedRunId, { testOnly = fals
     created: new Date().toISOString(),
   });
 
-  runCreated = true;
+  runCreated = !attachToExisting;
   _set(projectId, {
     ..._defaultTraining(),
     active: true,
@@ -220,7 +231,7 @@ export async function stopTraining() {
 
   _set(projectId, { active: false, event: "stopped", reconnected: false });
 
-  if (state.runId) {
+  if (state.runId && !state.testOnly) {
     await updateRun(state.runId, { status: "failed" });
   }
 }
@@ -242,7 +253,7 @@ export async function forceResetTraining() {
 
   _set(projectId, _defaultTraining());
 
-  if (state.runId && state.active) {
+  if (state.runId && state.active && !state.testOnly) {
     await updateRun(state.runId, { status: "failed" });
   }
 }
@@ -289,18 +300,16 @@ function _processEvent(session_id, data) {
 
     case "testing_complete": {
       const testMetrics = data.metrics ?? {};
-      const testAcc =
-        testMetrics["test/accuracy"] ??
-        testMetrics["test/acc"] ??
-        testMetrics["test/MulticlassAccuracy"] ??
-        null;
+      const testAcc = pickTestAcc(testMetrics);
 
-      // Accumulate test metrics into scalars for chart display
-      const prevScalars = { ..._get(session_id).scalars };
+      // Start from the run's saved scalars so a test-only run (whose live
+      // state has no train/val history) doesn't wipe the run's curves.
+      const savedRun = state.runId ? allRuns.value.find((r) => r.id === state.runId) : null;
+      const prevScalars = { ...(savedRun?.scalars || {}), ..._get(session_id).scalars };
+      // A test is one evaluation: re-running it replaces the previous values.
       for (const [tag, value] of Object.entries(testMetrics)) {
         if (value == null) continue;
-        if (!prevScalars[tag]) prevScalars[tag] = [];
-        prevScalars[tag] = [...prevScalars[tag], { step: 0, value }];
+        prevScalars[tag] = [{ step: 0, value }];
       }
 
       // Capture confusion matrix and per-class metrics for all splits (test, train, val)
@@ -452,7 +461,7 @@ function _processEvent(session_id, data) {
         estimatedRemaining: null,
       });
 
-      if (state.runId) {
+      if (state.runId && !state.testOnly) {
         // Persist all accumulated data so RunDetail can render without files
         const finalUpdate = {
           status: "completed",
@@ -465,10 +474,23 @@ function _processEvent(session_id, data) {
         };
         if (Object.keys(state.testMetrics).length > 0) {
           finalUpdate.testMetrics = state.testMetrics;
-          const tAcc = state.testMetrics["test/accuracy"] ?? state.testMetrics["test/acc"] ?? null;
+          const tAcc = pickTestAcc(state.testMetrics);
           if (tAcc != null) finalUpdate.testAcc = tAcc;
         }
         updateRun(state.runId, finalUpdate);
+      }
+
+      // A fit+test run reattached after an app restart lost the process that
+      // would have run its test step; run it now against the same run.
+      if (state.pendingTest && state.runId) {
+        _set(session_id, { pendingTest: null });
+        _startPendingTest(session_id, state.runId, state.pendingTest.command);
+      }
+
+      // Test-only runs already notified on testing_complete.
+      if (state.testOnly) {
+        processQueue(session_id);
+        break;
       }
 
       // Send OS notification
@@ -497,12 +519,13 @@ function _processEvent(session_id, data) {
         estimatedRemaining: null,
       });
 
-      if (state.runId) {
+      // A failed evaluation leaves the evaluated run's own status alone.
+      if (state.runId && !state.testOnly) {
         updateRun(state.runId, { status: "failed" });
       }
 
       _notify(
-        "Training Failed",
+        state.testOnly ? "Testing Failed" : "Training Failed",
         errorMsg.length > 100 ? errorMsg.slice(0, 100) + "..." : errorMsg,
       );
 
@@ -515,6 +538,19 @@ function _processEvent(session_id, data) {
 
 // ── Reconnect to orphaned training sessions ─────────────────────────────────
 
+/** Run the test step a reattached fit+test run never got, against that run. */
+async function _startPendingTest(projectId, runId, command) {
+  const project = projectList.value.find((p) => String(p.id) === String(projectId));
+  if (!project?.projectPath || !command) return;
+  try {
+    // Point config.yaml at this run so AutoTimm loads its checkpoint.
+    await syncConfig(project, project.id, runId);
+    await startTraining(command, project.projectPath, runId, { testOnly: true, projectId: project.id });
+  } catch (err) {
+    console.warn(`[training] Could not run the pending test for ${project.name}:`, err);
+  }
+}
+
 /**
  * Check all projects for orphaned training sessions that survived an app crash.
  * For each found:
@@ -523,6 +559,7 @@ function _processEvent(session_id, data) {
  */
 export async function recoverOrphanedSessions() {
   const projects = projectList.value;
+  const activeRunIds = new Set(); // runs whose process is still alive
   for (const project of projects) {
     if (!project.projectPath) continue;
 
@@ -596,6 +633,8 @@ export async function recoverOrphanedSessions() {
         ..._defaultTraining(),
         active: true,
         reconnected: true,
+        // A reattached "Run test" must not overwrite the evaluated run on finish.
+        testOnly: commandSteps(meta.command) === "test",
         runId,
       });
 
@@ -608,6 +647,13 @@ export async function recoverOrphanedSessions() {
       for (const data of events) {
         _processEvent(projectId, data);
       }
+
+      // Did this fit+test run finish (or will it finish) without its test step?
+      const steps = commandSteps(meta.command).split("+");
+      const owesTest =
+        steps.includes("fit") && steps.includes("test") &&
+        !events.some((e) => typeof e?.event === "string" && e.event.startsWith("test"));
+      const testCommand = owesTest ? toTestOnlyCommand(meta.command) : null;
 
       // Check final state after replay
       const stateAfterReplay = _get(projectId);
@@ -634,6 +680,9 @@ export async function recoverOrphanedSessions() {
             await updateRun(runId, { status: "running" });
           }
         }
+        activeRunIds.add(runId);
+        // When the watched fit finishes, training_complete runs the test step.
+        if (testCommand) _set(projectId, { pendingTest: { command: testCommand } });
         // Start watching log file for new events
         console.log(
           `[training] Reconnected to orphaned training for ${project.name} (PID ${meta.pid})`,
@@ -669,6 +718,10 @@ export async function recoverOrphanedSessions() {
         console.log(
           `[training] Recovered completed/failed orphaned training for ${project.name}`,
         );
+        // Fit finished while the app was closed; run the test step it never got.
+        if (testCommand && _get(projectId).event === "training_complete") {
+          _startPendingTest(projectId, runId, testCommand);
+        }
       }
     } catch (err) {
       // check_training_session can fail for non-local projects — ignore
@@ -678,6 +731,44 @@ export async function recoverOrphanedSessions() {
       );
     }
   }
+  return activeRunIds;
+}
+
+/**
+ * Settle runs still marked "running" that no live process belongs to — e.g.
+ * the app closed before the final status was saved. Each run's own event log
+ * says how it ended: completed if training (or a test-only evaluation)
+ * finished, failed otherwise. Runs without a local log are left alone.
+ */
+async function settleStaleRuns(activeRunIds = new Set()) {
+  const stale = allRuns.value.filter(
+    (r) => r.status === "running" && !activeRunIds.has(r.id) && !_get(r.projectId).active,
+  );
+  for (const run of stale) {
+    const project = projectList.value.find((p) => p.id === run.projectId);
+    if (!project?.projectPath || project.connectionType === "remote") continue;
+    const sep = project.projectPath.includes("\\") ? "\\" : "/";
+    const base = project.projectPath.replace(/[\\/]+$/, "");
+    const logFile = [base, "logs", run.id, `${run.id}.jsonl`].join(sep);
+    let events;
+    try {
+      events = await invoke("read_training_log", { logFile });
+    } catch {
+      continue; // no local log to go by
+    }
+    if (!Array.isArray(events)) continue;
+    const finished = [...events].reverse().find(
+      (e) => e?.event === "training_complete" || e?.event === "testing_complete",
+    );
+    const update = finished ? { status: "completed" } : { status: "failed" };
+    if (finished?.timestamp) update.finishedAt = new Date(finished.timestamp * 1000).toISOString();
+    try {
+      await updateRun(run.id, update);
+      console.log(`[training] Settled stale run ${run.name || run.id} as ${update.status}`);
+    } catch (err) {
+      console.warn(`[training] Could not settle run ${run.id}:`, err);
+    }
+  }
 }
 
 // ── Event listener setup ─────────────────────────────────────────────────────
@@ -685,7 +776,7 @@ export async function recoverOrphanedSessions() {
 let _unlistenEvent = null;
 let _unlistenLog = null;
 
-export async function initTrainingListeners() {
+export async function initTrainingListeners(dataLoaded = Promise.resolve()) {
   // Avoid double-init
   if (_unlistenEvent) return;
 
@@ -710,9 +801,12 @@ export async function initTrainingListeners() {
     // Stderr logs — could forward to a log panel in the future
   });
 
-  // Check for orphaned sessions from a previous app crash
-  // Small delay to let projects and runs load first
-  setTimeout(() => recoverOrphanedSessions(), 500);
+  // Check for orphaned sessions from a previous app crash once projects and
+  // runs are loaded — otherwise recovery can't find the run and overwrites it.
+  dataLoaded
+    .catch(() => {})
+    .then(() => recoverOrphanedSessions())
+    .then((activeRunIds) => settleStaleRuns(activeRunIds));
 }
 
 /** Remove per-project training state when a project is deleted. */

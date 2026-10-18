@@ -3,8 +3,22 @@ import { openDB, deleteDB } from "idb";
 const DB_NAME = "nightflow-db";
 const DB_VERSION = 3;
 
+// One shared connection. Opening a new one per call let concurrent updates
+// interleave across connections in no particular order.
+let _dbPromise = null;
+
 // Initialize the database
-export async function initDB() {
+export function initDB() {
+  if (!_dbPromise) {
+    _dbPromise = _openDB().catch((err) => {
+      _dbPromise = null; // let the next call retry
+      throw err;
+    });
+  }
+  return _dbPromise;
+}
+
+function _openDB() {
   return openDB(DB_NAME, DB_VERSION, {
     upgrade(db, oldVersion, _newVersion, transaction) {
       // v1: initial schema
@@ -29,7 +43,33 @@ export async function initDB() {
         }
       }
     },
+    // Another tab/window upgraded the schema: drop this connection so the next
+    // call reopens instead of using a closed handle.
+    blocking() {
+      _dbPromise?.then((db) => db.close());
+      _dbPromise = null;
+    },
   });
+}
+
+/**
+ * Read-modify-write a record in one transaction. Readwrite transactions on a
+ * store run one at a time in the order they're created, so concurrent updates
+ * apply in call order and none of them writes back a stale copy.
+ */
+async function updateRecord(storeName, id, updates, label) {
+  const db = await initDB();
+  const tx = db.transaction(storeName, "readwrite");
+  const current = await tx.store.get(id);
+  if (!current) {
+    tx.abort();
+    await tx.done.catch(() => {});
+    throw new Error(`${label} with id ${id} not found`);
+  }
+  const updated = { ...current, ...updates };
+  await tx.store.put(updated);
+  await tx.done;
+  return updated;
 }
 
 // ========================================
@@ -70,14 +110,7 @@ export async function deleteProject(id) {
 }
 
 export async function updateProject(id, updates) {
-  const db = await initDB();
-  const project = await db.get("projects", id);
-  if (!project) {
-    throw new Error(`Project with id ${id} not found`);
-  }
-  const updated = { ...project, ...updates };
-  await db.put("projects", updated);
-  return updated;
+  return updateRecord("projects", id, updates, "Project");
 }
 
 // ========================================
@@ -111,14 +144,7 @@ export async function deleteRun(id) {
 }
 
 export async function updateRun(id, updates) {
-  const db = await initDB();
-  const run = await db.get("runs", id);
-  if (!run) {
-    throw new Error(`Run with id ${id} not found`);
-  }
-  const updated = { ...run, ...updates };
-  await db.put("runs", updated);
-  return updated;
+  return updateRecord("runs", id, updates, "Run");
 }
 
 // ========================================
@@ -176,6 +202,7 @@ export async function migrateProjectIds() {
 export async function clearAllData() {
   const db = await initDB();
   db.close();
+  _dbPromise = null; // reopen (and recreate the schema) on next use
   await deleteDB(DB_NAME);
 }
 
@@ -191,10 +218,11 @@ export async function exportData() {
 // ========================================
 
 export async function saveSyncMetadata(projectId, metadata) {
-  const db = await initDB();
-  const project = await db.get("projects", projectId);
-  if (!project) return;
-  await db.put("projects", { ...project, syncMetadata: metadata });
+  try {
+    await updateRecord("projects", projectId, { syncMetadata: metadata }, "Project");
+  } catch {
+    // Project was deleted meanwhile — nothing to save.
+  }
 }
 
 export async function getSyncMetadata(projectId) {

@@ -421,10 +421,6 @@ export function RunDetailView() {
 
   return (
     <div class="run-detail-view">
-      <button class="run-detail-back" onClick={() => navigate("experiments")}>
-        &larr; Back to Experiments
-      </button>
-
       <div class="run-detail-header">
         <h2>{run.name || run.id}</h2>
         <div style="display:flex;align-items:center;gap:8px">

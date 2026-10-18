@@ -23,6 +23,7 @@
 
 ![macOS](https://img.shields.io/badge/macOS-ARM64_|_x64-000000?style=for-the-badge&logo=apple&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux_(Debian/Ubuntu)-x64-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+![Windows 11](https://img.shields.io/badge/Windows_11_(beta)-x64-0078D4?style=for-the-badge&logo=windows11&logoColor=white)
 
 <br>
 
@@ -134,20 +135,30 @@ brew install --cask nightflow
 
 > [!NOTE]
 > NightFlow keeps itself current. When a new release is available, click **Update** in
-> the app — it downloads the update, closes, installs, and relaunches. You can also
-> re-run the install command above at any time.
+> the app — it downloads the update, closes, installs, and relaunches. Updating quits the
+> app, so if a training run is active NightFlow asks before going ahead. If the update
+> can't run, the badge switches to **Download** and opens the release page instead. You
+> can also re-run the install command above at any time.
 
 > [!IMPORTANT]
 > You need **Python 3.12** on the machine that trains. That's all — NightFlow builds its
 > own isolated environment and installs AutoTimm into it during **Sync**.
 
 <details>
-<summary><b>Windows?</b></summary>
+<summary><b>Windows 11 (beta)</b></summary>
 
 <br>
 
-Windows builds are paused. You can still [build from source](#build-from-source), but
-it's untested.
+Run this in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Noctillio-Ai/NightFlow/main/install.ps1 | iex
+```
+
+Windows support is in **beta** and needs **Windows 11** (build 22000 or later) on an
+x64 PC. The installer refuses to run on Windows 10 and earlier. It isn't code-signed
+yet, so SmartScreen may warn about it; the script clears that warning for the one
+installer it downloads. Please [report anything that breaks](https://github.com/Noctillio-Ai/NightFlow/issues).
 
 </details>
 
@@ -226,6 +237,10 @@ Sync is the step people skip and then wonder why nothing works. It:
 - checks every dataset path you gave it exists
 - validates the layout matches the format you chose
 - imports any runs already in the project folder
+
+The dashboard's workspace banner shows the result — **Workspace ready** with a
+"5/5 checks passed" count. Expand it to see each check (dataset, structure, package
+manager, Python, AutoTimm); a failing check turns the banner red and opens it for you.
 
 Until a project is connected **and** synced, the sidebar shows only Dashboard and
 Settings — the other views have nothing to display yet.
@@ -308,9 +323,10 @@ instance ID per row.
 
 ### While it trains
 
+- **Dashboard at a glance** — readiness checks, the current experiment, best results and recent runs on one screen
 - **Live charts** — loss and accuracy as the job runs
 - **Real terminal** — full PTY if you want raw output
-- **System metrics** — CPU, memory, NVIDIA GPU
+- **Machine health** — CPU, memory, disk, and per-GPU load, VRAM and temperature (NVIDIA)
 - **Training queue** — line up runs back to back
 - **Crash recovery** — reattaches and replays the log
 
@@ -333,8 +349,8 @@ instance ID per row.
 
 ## Advanced training
 
-Turn on **Power User Mode** (Settings → General) to unlock the **Advanced Training** tab.
-Leave anything blank and it falls through to the AutoTimm default.
+Every project has an **Advanced Training** tab in Settings. Leave anything blank and it
+falls through to the AutoTimm default.
 
 <details>
 <summary><b>The full settings matrix</b></summary>
@@ -519,7 +535,9 @@ graph TD
 ```
 src/
 ├── views/          10 top-level screens
-├── components/     23 shared components
+├── components/     21 shared components
+│   └── dashboard/  dashboard sections (banner, experiment, results, runs, machine health)
+├── hooks/          shared hooks (system metrics, terminal, Escape to close)
 ├── state/          10 signal modules (projects, training, dashboard, …)
 ├── db/             IndexedDB access
 └── utils/          config generation, model catalog, export
@@ -570,6 +588,9 @@ sudo apt-get update && sudo apt-get install -y \
   patchelf libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
 ```
 
+**Windows 11 (beta)** — install the Microsoft C++ Build Tools ("Desktop development
+with C++"). WebView2 ships with Windows 11.
+
 | Task | Command |
 | :--- | :--- |
 | Full app (hot reload) | `npx tauri dev` |
@@ -617,7 +638,8 @@ Issues and pull requests are welcome.
 1. Fork the repository
 2. Branch — `git checkout -b feat/your-feature`
 3. Keep `npm run lint`, `npm test` and `cargo clippy` clean
-4. Open a pull request
+4. Open a pull request — it can merge into `main` once **Lint** and the **macOS, Windows
+   and Linux builds** all pass
 
 Full docs: **[noctillio-ai.github.io/NightFlow](https://noctillio-ai.github.io/NightFlow/)**
 

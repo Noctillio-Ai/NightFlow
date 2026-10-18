@@ -33,7 +33,7 @@ import { EmptyProjectsScreen } from "./components/EmptyProjectsScreen.jsx";
 import { TutorialOverlay } from "./components/TutorialOverlay.jsx";
 import { maybeStartTutorial } from "./state/tutorial.js";
 
-const shortcutsOpen = signal(false);
+export const shortcutsOpen = signal(false);
 export const aboutOpen = signal(false);
 
 function CurrentView() {
@@ -64,10 +64,10 @@ function CurrentView() {
 export function App() {
   useEffect(() => {
     // Load data from database
-    loadProjects().then(() => loadRuns());
+    const dataLoaded = loadProjects().then(() => loadRuns());
 
-    // Start listening for training events
-    initTrainingListeners();
+    // Start listening for training events; crash recovery waits for the data
+    initTrainingListeners(dataLoaded);
 
     // Check for updates
     startUpdateChecker();
