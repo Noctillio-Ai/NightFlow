@@ -210,12 +210,24 @@ fn normalize_split_name(name: &str) -> &'static str {
 }
 
 #[command]
-pub fn detect_dataset_splits(path: String) -> Result<Vec<String>, String> {
+pub fn detect_dataset_splits(path: String, format: Option<String>) -> Result<Vec<String>, String> {
     let expanded = expand_tilde(&path);
     let resolved = std::path::PathBuf::from(&expanded);
 
     if !resolved.is_dir() {
         return Ok(vec![]);
+    }
+
+    if is_coco_format(format.as_deref()) {
+        let mut splits: Vec<String> = coco_annotation_files(&resolved)
+            .iter()
+            .filter_map(|f| coco_split_of(f))
+            .map(str::to_string)
+            .collect();
+        let order = ["train", "val", "test"];
+        splits.sort_by_key(|s| order.iter().position(|o| o == s).unwrap_or(99));
+        splits.dedup();
+        return Ok(splits);
     }
 
     let top_entries: Vec<_> = std::fs::read_dir(&resolved)
@@ -257,10 +269,162 @@ pub fn detect_dataset_splits(path: String) -> Result<Vec<String>, String> {
     Ok(splits)
 }
 
-#[derive(serde::Serialize)]
+fn is_coco_format(format: Option<&str>) -> bool {
+    matches!(format, Some("COCO JSON") | Some("COCO"))
+}
+
+/// COCO ships files for other tasks next to the object annotations: captions
+/// (no categories), person keypoints (one category) and unlabelled image lists.
+const COCO_OTHER_TASKS: &[&str] = &["captions_", "person_keypoints_", "image_info_"];
+
+/// Object annotation files in `<root>/annotations/`, sorted by name.
+fn coco_annotation_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files: Vec<_> = std::fs::read_dir(root.join("annotations"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().and_then(|x| x.to_str()).is_some_and(|x| x.eq_ignore_ascii_case("json")))
+        .filter(|p| {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+            !COCO_OTHER_TASKS.iter().any(|prefix| name.starts_with(prefix))
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+/// Split named by an annotation file, e.g. instances_train2017.json → train.
+fn coco_split_of(file: &std::path::Path) -> Option<&'static str> {
+    let name = file.file_stem()?.to_str()?.to_lowercase();
+    if name.contains("train") {
+        Some("train")
+    } else if name.contains("val") {
+        Some("val")
+    } else if name.contains("test") {
+        Some("test")
+    } else {
+        None
+    }
+}
+
+/// Directory that COCO `file_name`s are relative to: the root, one of its
+/// image folders (train/, images/, train2017/) or a folder inside those.
+fn coco_image_dir(root: &std::path::Path, sample: Option<&str>, split: Option<&str>) -> std::path::PathBuf {
+    let mut candidates = vec![root.to_path_buf()];
+    let subdirs: Vec<_> = std::fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir() && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n != "annotations" && !n.starts_with('.')))
+        .collect();
+    for dir in &subdirs {
+        candidates.push(dir.clone());
+        for inner in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            if inner.path().is_dir() { candidates.push(inner.path()); }
+        }
+    }
+    if let Some(sample) = sample
+        && let Some(found) = candidates.iter().find(|dir| dir.join(sample).is_file())
+    {
+        return found.clone();
+    }
+    // Nothing matched: fall back to a folder named after the split.
+    split
+        .and_then(|split| subdirs.iter().find(|d| d.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.to_lowercase().starts_with(split))))
+        .cloned()
+        .unwrap_or_else(|| root.to_path_buf())
+}
+
+/// Label of a COCO image without annotated objects.
+const NO_OBJECTS: &str = "no objects";
+
+/// Images in a COCO annotation file, each labelled with the categories of its
+/// objects (joined with " | "). `class_counts` counts images per category and
+/// `stats` counts objects.
+fn browse_coco_file(
+    root: &std::path::Path,
+    file: &std::path::Path,
+    images: &mut Vec<DatasetImage>,
+    class_counts: &mut std::collections::HashMap<String, usize>,
+    stats: &mut ObjectStats,
+) -> Result<(), String> {
+    let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("annotation file");
+    let contents = std::fs::read_to_string(file).map_err(|e| format!("Failed to read {name}: {e}"))?;
+    let doc: serde_json::Value = serde_json::from_str(&contents).map_err(|e| format!("{name} is not valid JSON: {e}"))?;
+
+    let mut categories = std::collections::HashMap::new();
+    for cat in doc["categories"].as_array().into_iter().flatten() {
+        if let (Some(id), Some(cat_name)) = (cat["id"].as_i64(), cat["name"].as_str()) {
+            categories.insert(id, cat_name.to_string());
+            class_counts.entry(cat_name.to_string()).or_insert(0);
+            stats.counts.entry(cat_name.to_string()).or_insert(0);
+        }
+    }
+
+    let mut objects: std::collections::HashMap<i64, Vec<DatasetObject>> = std::collections::HashMap::new();
+    for ann in doc["annotations"].as_array().into_iter().flatten() {
+        let (Some(image_id), Some(cat_name)) = (ann["image_id"].as_i64(), ann["category_id"].as_i64().and_then(|c| categories.get(&c))) else { continue };
+        let mut bbox = [0.0; 4];
+        for (slot, value) in bbox.iter_mut().zip(ann["bbox"].as_array().into_iter().flatten()) {
+            *slot = value.as_f64().unwrap_or(0.0);
+        }
+        *stats.counts.entry(cat_name.clone()).or_insert(0) += 1;
+        objects.entry(image_id).or_default().push(DatasetObject { label: cat_name.clone(), bbox });
+    }
+
+    let entries = doc["images"].as_array().cloned().unwrap_or_default();
+    let sample = entries.first().and_then(|img| img["file_name"].as_str());
+    let image_dir = coco_image_dir(root, sample, coco_split_of(file));
+    for img in &entries {
+        let Some(file_name) = img["file_name"].as_str() else { continue };
+        let image_objects = img["id"].as_i64().and_then(|id| objects.remove(&id)).unwrap_or_default();
+        let names: std::collections::BTreeSet<&str> = image_objects.iter().map(|o| o.label.as_str()).collect();
+        for cat_name in &names { *class_counts.entry(cat_name.to_string()).or_insert(0) += 1; }
+        if names.is_empty() { stats.empty_images += 1; }
+        let label = if names.is_empty() { NO_OBJECTS.to_string() } else { names.into_iter().collect::<Vec<_>>().join(" | ") };
+        images.push(DatasetImage {
+            path: image_dir.join(file_name).to_string_lossy().to_string(),
+            label,
+            width: img["width"].as_f64().filter(|w| *w > 0.0),
+            height: img["height"].as_f64().filter(|h| *h > 0.0),
+            objects: Some(image_objects),
+        });
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize, Default)]
 pub struct DatasetImage {
     pub path: String,
     pub label: String,
+    /// Annotated objects (COCO only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objects: Option<Vec<DatasetObject>>,
+    /// Pixel size from the annotations, which box coordinates refer to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct DatasetObject {
+    pub label: String,
+    /// [x, y, width, height] in pixels, top-left origin (COCO convention).
+    pub bbox: [f64; 4],
+}
+
+/// Object totals for annotated (COCO) datasets.
+#[derive(serde::Serialize, Default)]
+pub struct ObjectStats {
+    /// Objects per category, before filters.
+    pub counts: std::collections::HashMap<String, usize>,
+    /// Images without any annotated object, before filters.
+    pub empty_images: usize,
+    /// Objects in the images that match the current filters.
+    pub matched: usize,
 }
 
 #[derive(serde::Serialize)]
@@ -268,6 +432,8 @@ pub struct DatasetBrowseResult {
     pub images: Vec<DatasetImage>,
     pub total: usize,
     pub class_counts: std::collections::HashMap<String, usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objects: Option<ObjectStats>,
 }
 
 fn csv_column_index(headers: &csv::StringRecord, name: Option<&str>, fallback: usize) -> Result<usize, String> {
@@ -293,6 +459,8 @@ pub fn browse_dataset(
     split: Option<String>,
 ) -> Result<DatasetBrowseResult, String> {
     let is_multilabel = label_columns.is_some();
+    // Multi-label CSV rows and COCO images both carry several " | "-joined labels.
+    let has_label_lists = is_multilabel || is_coco_format(Some(&format));
     let expanded = expand_tilde(&path);
     let resolved_path = std::path::PathBuf::from(&expanded);
 
@@ -303,6 +471,7 @@ pub fn browse_dataset(
     let image_exts: &[&str] = IMAGE_EXTS;
     let mut all_images: Vec<DatasetImage> = Vec::new();
     let mut class_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut object_stats: Option<ObjectStats> = None;
 
     if format == "Folder" && resolved_path.is_dir() {
         // Collect image files from a class directory
@@ -325,6 +494,7 @@ pub fn browse_dataset(
                 all_images.push(DatasetImage {
                     path: file_path.to_string_lossy().to_string(),
                     label: class_name.to_string(),
+                    ..Default::default()
                 });
             }
             *class_counts.entry(class_name.to_string()).or_insert(0) += count;
@@ -464,6 +634,7 @@ pub fn browse_dataset(
             all_images.push(DatasetImage {
                 path: full_path.to_string_lossy().to_string(),
                 label,
+                ..Default::default()
             });
         }
     } else if format == "JSONL" && resolved_path.is_file() {
@@ -526,7 +697,17 @@ pub fn browse_dataset(
             all_images.push(DatasetImage {
                 path: full_path.to_string_lossy().to_string(),
                 label,
+                ..Default::default()
             });
+        }
+    } else if is_coco_format(Some(&format)) && resolved_path.is_dir() {
+        let files = coco_annotation_files(&resolved_path);
+        if files.is_empty() {
+            return Err("No annotation files found. Expected JSON files in annotations/, e.g. annotations/instances_train.json".to_string());
+        }
+        let stats = object_stats.insert(ObjectStats::default());
+        for file in files.iter().filter(|f| split.is_none() || coco_split_of(f) == split.as_deref()) {
+            browse_coco_file(&resolved_path, file, &mut all_images, &mut class_counts, stats)?;
         }
     } else {
         return Err(format!("Unsupported format '{}' or invalid path", format));
@@ -539,7 +720,7 @@ pub fn browse_dataset(
     if let Some(ref filters) = class_filter
         && !filters.is_empty()
     {
-        all_images.retain(|img| filters.contains(&img.label) || (is_multilabel && img.label.split(" | ").any(|label| filters.iter().any(|f| f == label))));
+        all_images.retain(|img| filters.contains(&img.label) || (has_label_lists && img.label.split(" | ").any(|label| filters.iter().any(|f| f == label))));
     }
 
     // Apply search filter if provided (matches filename or label, case-insensitive)
@@ -555,6 +736,9 @@ pub fn browse_dataset(
     }
 
     let total = all_images.len();
+    if let Some(stats) = object_stats.as_mut() {
+        stats.matched = all_images.iter().map(|img| img.objects.as_ref().map_or(0, Vec::len)).sum();
+    }
 
     // Apply pagination
     let paginated: Vec<DatasetImage> = all_images
@@ -567,6 +751,7 @@ pub fn browse_dataset(
         images: paginated,
         total,
         class_counts,
+        objects: object_stats,
     })
 }
 
@@ -868,9 +1053,16 @@ fn validate_coco_json(
                 warnings.push("No training annotation file found (expected a file containing 'train' in its name).".into());
             }
 
-            // Optionally validate JSON structure of the first file
-            if let Some(first) = json_files.first() {
-                let ann_path = ann_dir.join(first);
+            // Check the training annotations (else any object annotation file),
+            // never captions or keypoints, whose categories aren't the dataset's.
+            let object_files = coco_annotation_files(root);
+            let chosen = object_files.iter().find(|f| coco_split_of(f) == Some("train")).or(object_files.first());
+            if chosen.is_none() {
+                errors.push("No object annotation file found in 'annotations/' (expected e.g. instances_train2017.json).".into());
+            }
+            if let Some(ann_path) = chosen {
+                let first = ann_path.file_name().and_then(|n| n.to_str()).unwrap_or("annotation file").to_string();
+                let ann_path = ann_path.clone();
                 match std::fs::read_to_string(&ann_path) {
                     Ok(contents) => {
                         match serde_json::from_str::<serde_json::Value>(&contents) {
@@ -1201,6 +1393,46 @@ mod csv_mapping_tests {
         assert_eq!(result.class_counts["bird"], 0);
         assert!(result.images[0].path.ends_with("b.png"));
         std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn coco_preview_reads_annotations_and_splits() {
+        let root = std::env::temp_dir().join(format!("nightflow-coco-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("annotations")).unwrap();
+        std::fs::create_dir_all(root.join("train2017")).unwrap();
+        std::fs::write(root.join("train2017/a.jpg"), b"").unwrap();
+        std::fs::write(root.join("annotations/instances_train2017.json"), r#"{
+            "images": [{"id": 1, "file_name": "a.jpg"}, {"id": 2, "file_name": "b.jpg"}],
+            "annotations": [{"image_id": 1, "category_id": 3, "bbox": [1, 2, 3, 4]}, {"image_id": 1, "category_id": 5, "bbox": [5, 6, 7, 8]}, {"image_id": 1, "category_id": 3, "bbox": [0, 0, 1, 1]}],
+            "categories": [{"id": 3, "name": "cat"}, {"id": 5, "name": "dog"}, {"id": 7, "name": "bird"}]
+        }"#).unwrap();
+        std::fs::write(root.join("annotations/instances_val2017.json"), r#"{"images": [], "annotations": [], "categories": []}"#).unwrap();
+        // Other COCO tasks' files sort first and must not be read as the dataset's categories.
+        std::fs::write(root.join("annotations/captions_train2017.json"), r#"{"images": [{"id": 1, "file_name": "a.jpg"}], "annotations": []}"#).unwrap();
+        std::fs::write(root.join("annotations/person_keypoints_train2017.json"), r#"{"images": [{"id": 1, "file_name": "a.jpg"}], "annotations": [{"image_id": 1, "category_id": 1, "bbox": [0, 0, 1, 1]}], "categories": [{"id": 1, "name": "person"}]}"#).unwrap();
+        let path: String = root.to_string_lossy().into();
+
+        let validation = validate_dataset_structure(path.clone(), "Object Detection".into(), "COCO JSON".into());
+        assert_eq!(validation.info["categories"], "3");
+
+        assert_eq!(detect_dataset_splits(path.clone(), Some("COCO JSON".into())).unwrap(), vec!["train", "val"]);
+        let result = browse_dataset(path.clone(), "COCO JSON".into(), 10, 0, Some(vec!["dog".into()]), None,
+            None, None, None, None, Some("train".into())).unwrap();
+        assert_eq!(result.total, 1);
+        assert_eq!(result.images[0].label, "cat | dog");
+        assert!(result.images[0].path.ends_with("train2017/a.jpg"));
+        assert_eq!(result.class_counts["cat"], 1);
+        assert_eq!(result.class_counts["bird"], 0);
+        let stats = result.objects.as_ref().unwrap();
+        assert_eq!(stats.counts["cat"], 2);
+        assert_eq!(stats.empty_images, 1);
+        assert_eq!(stats.matched, 3);
+        assert_eq!(result.images[0].objects.as_ref().unwrap().len(), 3);
+
+        let empty = browse_dataset(path, "COCO JSON".into(), 10, 0, Some(vec![NO_OBJECTS.into()]), None,
+            None, None, None, None, Some("train".into())).unwrap();
+        assert_eq!(empty.total, 1);
+        assert!(empty.images[0].path.ends_with("b.jpg"));
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn preview_uses_custom_columns() {

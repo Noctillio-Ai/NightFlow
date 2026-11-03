@@ -2,6 +2,12 @@
 
 // Convert snake_case / camelCase keys to Title Case labels
 export function formatLabel(key) {
+  // Detection metrics: map_50 → mAP@50, mar_100 → mAR@100, map_small → mAP small.
+  const det = /^ma([pr])(?:_(\w+))?$/.exec(key);
+  if (det) {
+    const base = `mA${det[1].toUpperCase()}`;
+    return !det[2] ? base : /^\d+$/.test(det[2]) ? `${base}@${det[2]}` : `${base} ${det[2].replace(/_/g, " ")}`;
+  }
   return key
     .replace(/_/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")

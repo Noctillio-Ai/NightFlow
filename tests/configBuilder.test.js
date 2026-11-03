@@ -92,3 +92,14 @@ test('conflicting and duplicate column mappings are rejected', () => {
   assert.throws(() => config({datasetFormat:'CSV',imageColumn:'image',labelColumn:'image'}), /different/);
   assert.throws(() => config({taskType:'Multi-Label Classification',datasetFormat:'CSV',labelColumns:'cat,cat'}), /unique/);
 });
+test('COCO detection points the test step at the default test split', () => {
+  const c = config({ taskType: 'Object Detection', datasetFormat: 'COCO JSON', folderPath: '/data/coco/' });
+  assert.equal(c.data.init_args.test_images_dir, '/data/coco/test2017');
+  assert.equal(c.data.init_args.test_ann_file, '/data/coco/annotations/instances_test2017.json');
+});
+test('detection early stopping follows val/map, not the missing val/loss', () => {
+  const c = config({ taskType: 'Object Detection', datasetFormat: 'COCO JSON', earlyStopping: true, earlyStoppingMonitor: 'val/loss' });
+  assert.equal(c.trainer.callbacks[0].init_args.monitor, 'val/map');
+  assert.equal(c.trainer.callbacks[0].init_args.mode, 'max');
+  assert.equal(config({ earlyStopping: true }).trainer.callbacks[0].init_args.monitor, 'val/loss');
+});

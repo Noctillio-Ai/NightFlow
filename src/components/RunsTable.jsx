@@ -11,16 +11,19 @@ import {
   toggleSort,
   deleteRun,
 } from "../state/experiments.js";
+import { currentProject } from "../state/projects.js";
 import { navigate } from "../state/router.js";
 import { useEscape } from "../hooks/useEscape.js";
-import { formatDuration, formatPercent, formatRelativeTime } from "../utils/format.js";
+import { formatDuration, formatRelativeTime } from "../utils/format.js";
 import { baseName } from "../utils/runCurves.js";
 import { RUN_COLORS, MAX_COMPARE } from "../utils/compareRuns.js";
+import { headlineFor } from "../utils/headline.js";
 import { ArrowRightIcon, ChartBarsIcon, LineChartIcon, PlayIcon, TrophyIcon, XIcon } from "./dashboard/icons.jsx";
 
 export const selectedRunIds = signal(new Set());
 
-const columns = [
+// bestAcc/testAcc hold the task's headline score: accuracy, or mAP for detection.
+const columnsFor = (h) => [
   { key: "_check", label: "", sortable: false },
   { key: "name", label: "Run" },
   { key: "status", label: "Status" },
@@ -29,16 +32,16 @@ const columns = [
   { key: "dataset", label: "Dataset" },
   { key: "created", label: "Started" },
   { key: "_duration", label: "Duration" },
-  { key: "bestAcc", label: "Val acc", num: true },
-  { key: "testAcc", label: "Test acc", num: true },
+  { key: "bestAcc", label: `Val ${h.short}`, num: true },
+  { key: "testAcc", label: `Test ${h.short}`, num: true },
   { key: "valLoss", label: "Val loss", num: true },
 ];
 
-const SORTS = [
+const sortsFor = (h) => [
   { id: "created:desc", label: "Newest first" },
   { id: "created:asc", label: "Oldest first" },
-  { id: "bestAcc:desc", label: "Best val accuracy" },
-  { id: "testAcc:desc", label: "Best test accuracy" },
+  { id: "bestAcc:desc", label: `Best val ${h.name}` },
+  { id: "testAcc:desc", label: `Best test ${h.name}` },
   { id: "valLoss:asc", label: "Lowest val loss" },
   { id: "_duration:desc", label: "Longest duration" },
   { id: "name:asc", label: "Name (A–Z)" },
@@ -151,7 +154,7 @@ async function deleteSelected(ids) {
 }
 
 /** Mini summary of one selected run in the comparison dock. */
-function DockRun({ run, color }) {
+function DockRun({ run, color, h }) {
   const duration = formatDuration(run.created, run.finishedAt);
   return (
     <button class="rt-dock-run" style={{ "--run": color }} onClick={() => navigate("run-detail", { runId: run.id })} title="Open run">
@@ -163,15 +166,15 @@ function DockRun({ run, color }) {
         {[run.backbone || run.model, formatRelativeTime(run.created), duration !== "\u2014" && duration].filter(Boolean).join(" \u00b7 ")}
       </span>
       <dl>
-        <div><dt>Val acc</dt><dd>{formatPercent(run.bestAcc)}</dd></div>
-        <div><dt>Test acc</dt><dd>{formatPercent(run.testAcc)}</dd></div>
+        <div><dt>Val {h.short}</dt><dd>{h.format(run.bestAcc)}</dd></div>
+        <div><dt>Test {h.short}</dt><dd>{h.format(run.testAcc)}</dd></div>
         <div><dt>Val loss</dt><dd>{run.valLoss != null ? run.valLoss.toFixed(4) : "\u2014"}</dd></div>
       </dl>
     </button>
   );
 }
 
-function CompareDock({ selected, onClear }) {
+function CompareDock({ selected, onClear, h }) {
   const ready = selected.length >= 2 && selected.length <= MAX_COMPARE;
   const shown = selected.slice(0, 2);
   return (
@@ -182,7 +185,7 @@ function CompareDock({ selected, onClear }) {
           <strong>{selected.length < 2 ? "Select one more run" : ready ? "Comparison ready" : `Up to ${MAX_COMPARE} runs at a time`}</strong>
           <span>
             {selected.length < 2
-              ? "Pick another run to compare accuracy, loss and configuration."
+              ? `Pick another run to compare ${h.name}, loss and configuration.`
               : ready
                 ? "Compare curves, headline metrics and configuration changes."
                 : `Deselect ${selected.length - MAX_COMPARE} to compare.`}
@@ -193,7 +196,7 @@ function CompareDock({ selected, onClear }) {
         {shown.map((r, i) => (
           <Fragment key={r.id}>
             {i > 0 && <span class="rt-dock-vs">vs</span>}
-            <DockRun run={r} color={RUN_COLORS[i]} />
+            <DockRun run={r} color={RUN_COLORS[i]} h={h} />
           </Fragment>
         ))}
         {selected.length > shown.length && <span class="rt-dock-more">+{selected.length - shown.length} more</span>}
@@ -213,6 +216,9 @@ function CompareDock({ selected, onClear }) {
 }
 
 export function RunsTable() {
+  const h = headlineFor(currentProject.value?.taskType);
+  const columns = columnsFor(h);
+  const SORTS = sortsFor(h);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const closeConfirm = useCallback(() => setConfirmDelete(false), []);
   const runs = filteredRuns.value;
@@ -254,7 +260,7 @@ export function RunsTable() {
           )}
           {top && (
             <button class="rt-chip rt-chip--best" onClick={() => navigate("run-detail", { runId: top.id })} title={`${top.name ?? top.id}: open run`}>
-              <TrophyIcon size={14} /> Best val. accuracy <strong>{formatPercent(top.bestAcc)}</strong>
+              <TrophyIcon size={14} /> Best val. {h.name} <strong>{h.format(top.bestAcc)}</strong>
             </button>
           )}
           <button class="dash-btn dash-btn--primary" onClick={() => navigate("dashboard")} title="Start a new training run from the dashboard">
@@ -412,10 +418,10 @@ export function RunsTable() {
                   </td>
                   <td class="rt-mono">{duration}</td>
                   <td class={`num rt-mono${run.bestAcc != null && run.bestAcc === bestVal ? " rt-best" : ""}`} title={run.bestAcc != null ? run.bestAcc.toFixed(4) : undefined}>
-                    {formatPercent(run.bestAcc)}
+                    {h.format(run.bestAcc)}
                   </td>
                   <td class={`num rt-mono${run.testAcc != null && run.testAcc === bestTest ? " rt-best" : ""}`} title={run.testAcc != null ? run.testAcc.toFixed(4) : undefined}>
-                    {formatPercent(run.testAcc)}
+                    {h.format(run.testAcc)}
                   </td>
                   <td class={`num rt-mono${run.valLoss != null && run.valLoss === bestLoss ? " rt-best" : ""}`}>
                     {run.valLoss != null ? run.valLoss.toFixed(4) : "\u2014"}
@@ -427,7 +433,7 @@ export function RunsTable() {
         </table>
       </div>
 
-      {someChecked && <CompareDock selected={selected} onClear={clearSelection} />}
+      {someChecked && <CompareDock selected={selected} onClear={clearSelection} h={h} />}
 
       {confirmDelete && (
         <DeleteRunsDialog

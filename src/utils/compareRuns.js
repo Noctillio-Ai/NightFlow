@@ -29,7 +29,8 @@ export function metricsBySplit(scalars = {}) {
     if (/_step$/.test(raw)) continue;
     const name = raw.replace(/_epoch$/, "");
     const values = seriesOf(points);
-    if (!values.length) continue;
+    // torchmetrics reports -1 for metrics it didn't compute (e.g. per-class mAP).
+    if (!values.length || values.every((v) => v === -1)) continue;
     out[split] ||= {};
     if (values.length > (out[split][name]?.length || 0)) out[split][name] = values;
   }
@@ -86,9 +87,15 @@ const extreme = (values, lower) => {
  * one value per run (undefined when the run doesn't have it); only entries at
  * least two runs share are returned.
  */
-export function headlineMetrics(runs, bySplitList) {
+export function headlineMetrics(runs, bySplitList, taskType = runs[0]?.taskType) {
   const pick = (fn) => runs.map((r, i) => fn(r, bySplitList[i] || {}));
-  const entries = [
+  // Detection runs are scored by mAP (val/map); bestAcc and testAcc hold it.
+  const entries = taskType === "Object Detection" ? [
+    { id: "val_map", label: "Validation mAP", kind: "map", values: pick((r, s) => extreme(s.val?.map, false) ?? r.bestAcc ?? undefined) },
+    { id: "val_map_50", label: "Validation mAP@50", kind: "map", values: pick((r, s) => extreme(s.val?.map_50, false)) },
+    { id: "test_map", label: "Test mAP", kind: "map", values: pick((r, s) => r.testAcc ?? extreme(s.test?.map, false)) },
+    { id: "time", label: "Training time", kind: "duration", lower: true, values: pick((r) => runDurationMs(r) ?? undefined) },
+  ] : [
     {
       id: "val_acc",
       label: "Validation accuracy",
@@ -174,6 +181,7 @@ export function formatMs(ms) {
 export function formatValue(kind, v) {
   if (!Number.isFinite(v)) return "—";
   if (kind === "score") return `${(v * 100).toFixed(1)}%`;
+  if (kind === "map") return v.toFixed(3);
   if (kind === "duration") return formatMs(v);
   return Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(4);
 }
@@ -184,6 +192,7 @@ export function formatDelta(kind, delta) {
   const sign = delta < 0 ? "−" : "+";
   const abs = Math.abs(delta);
   if (kind === "score") return `${sign}${(abs * 100).toFixed(1)} pts`;
+  if (kind === "map") return `${sign}${abs.toFixed(3)}`;
   if (kind === "duration") return `${sign}${formatMs(abs)}`;
   return `${sign}${abs >= 100 ? abs.toFixed(1) : abs.toFixed(4)}`;
 }

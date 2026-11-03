@@ -10,7 +10,8 @@ import {
 import { currentProject } from "../../state/projects.js";
 import { resolveBackboneName } from "../../state/experiments.js";
 import { navigate } from "../../state/router.js";
-import { formatPercent, formatRelativeTime } from "../../utils/format.js";
+import { formatRelativeTime } from "../../utils/format.js";
+import { headlineFor } from "../../utils/headline.js";
 import { baseName } from "../../utils/runCurves.js";
 import {
   ArrowRightIcon,
@@ -52,6 +53,7 @@ function Fact({ icon, label, value, sub, title }) {
 /** Disconnected dashboard: what we'll connect to, what happens next, and the project at a glance. */
 export function ConnectCard() {
   const project = currentProject.value;
+  const h = headlineFor(project?.taskType);
   const host = sshInfo.value?.host || "localhost";
   const remote = project?.connectionType === "remote";
   const connecting = sshConnecting.value;
@@ -84,7 +86,7 @@ export function ConnectCard() {
           ? `Synced ${formatRelativeTime(syncedAt)}, so you'll go straight to the dashboard.`
           : "Builds a Python 3.12 environment with AutoTimm and validates your dataset. The first sync takes a few minutes.";
   const trainDetail = s.totalRuns
-    ? `${s.totalRuns} ${s.totalRuns === 1 ? "run" : "runs"} so far${s.bestAcc != null ? ` · best validation accuracy ${formatPercent(s.bestAcc)}` : ""}.`
+    ? `${s.totalRuns} ${s.totalRuns === 1 ? "run" : "runs"} so far${s.bestAcc != null ? ` · best validation ${h.name} ${h.format(s.bestAcc)}` : ""}.`
     : "Launch your first run with the project's model and hyperparameters.";
 
   return (
@@ -145,7 +147,7 @@ export function ConnectCard() {
           icon={<ChartBarsIcon size={16} />}
           label="Runs"
           value={s.totalRuns ? `${s.totalRuns} ${s.totalRuns === 1 ? "run" : "runs"}` : "None yet"}
-          sub={s.bestAcc != null ? `Best val ${formatPercent(s.bestAcc)}` : null}
+          sub={s.bestAcc != null ? `Best val ${h.name} ${h.format(s.bestAcc)}` : null}
         />
       </aside>
     </section>

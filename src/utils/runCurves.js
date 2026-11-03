@@ -2,10 +2,11 @@
 // `lossCurve`/`accCurve`; runs imported by sync usually only have `scalars`
 // ({ [tag]: [{ step, value }] }), so fall back to the matching scalar tag.
 
+import { headlineFor } from "./headline.js";
+
 const TAGS = {
   trainLoss: ["train/loss_epoch", "train/loss", "train_loss", "loss"],
   valLoss: ["val/loss", "val_loss"],
-  valAcc: ["val/accuracy", "val/acc", "val_accuracy", "val_acc"],
 };
 
 /** Scalar points → values ordered by step, keeping the last value per step. */
@@ -20,7 +21,9 @@ function scalarValues(points) {
 
 function fromScalars(run, kind) {
   const scalars = run?.scalars || {};
-  for (const tag of TAGS[kind]) {
+  // valAcc is the task's headline score: accuracy, or mAP for detection.
+  const tags = kind === "valAcc" ? headlineFor(run?.taskType).valTags : TAGS[kind];
+  for (const tag of tags) {
     const values = scalarValues(scalars[tag]);
     if (values.length) return values;
   }

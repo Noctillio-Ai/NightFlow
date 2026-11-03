@@ -1767,6 +1767,8 @@ function StepDataset() {
   const formats = DATASET_FORMATS[d.taskType] || [];
   const isCsvOrJsonl = d.datasetFormat === "CSV" || d.datasetFormat === "JSONL";
   const needsFolderPath = d.datasetFormat && !isCsvOrJsonl; // All formats except CSV/JSONL need folder path
+  // Detection reads its class count from the annotations instead of asking for it.
+  const isDetection = d.taskType === "Object Detection";
   const fileExtension =
     d.datasetFormat === "CSV"
       ? "csv"
@@ -1806,13 +1808,28 @@ function StepDataset() {
       if (!cancelled && result?.class_counts) {
         const names = Object.keys(result.class_counts).sort();
         wizardSetField("classNames", names);
-        if (names.length >= 2 && !d.numClasses) {
+        if (isDetection ? names.length > 0 : names.length >= 2 && !d.numClasses) {
           wizardSetField("numClasses", names.length);
         }
       }
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [d.folderPath, d.trainPath, d.datasetFormat, d.imageFolderPath, d.imageColumn, d.labelColumn, d.labelColumns]);
+
+  // COCO detection: count the categories in the annotation file.
+  useEffect(() => {
+    if (!isDetection || d.datasetFormat !== "COCO JSON" || d.connectionType === "remote" || !d.folderPath.trim()) return;
+    let cancelled = false;
+    invoke("validate_dataset_structure", {
+      path: d.folderPath.trim(),
+      taskType: d.taskType,
+      format: d.datasetFormat,
+    }).then((result) => {
+      const categories = Number(result?.info?.categories);
+      if (!cancelled) wizardSetField("numClasses", categories > 0 ? categories : "");
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [d.folderPath, d.datasetFormat, d.taskType, d.connectionType]);
 
   const handleTrainPathInput = (e) => {
     wizardSetField("trainPath", e.target.value);
@@ -1870,7 +1887,7 @@ function StepDataset() {
           />
         </div>
       )}
-      <div class="wizard-folder-path-section">
+      {!isDetection && <div class="wizard-folder-path-section">
         <p class="wizard-sub-label">
           Number of Classes <span class="wizard-required-indicator">*</span>
         </p>
@@ -1890,7 +1907,7 @@ function StepDataset() {
             if (e.key === "Enter" && wizardCanProceed.value) wizardNext();
           }}
         />
-      </div>
+      </div>}
       {isCsvOrJsonl && (
         <div class="wizard-folder-path-section">
           <p class="wizard-sub-label">
@@ -1935,7 +1952,7 @@ function StepDataset() {
           </div>
           <div class="wizard-file-path-group">
             <label class="wizard-file-path-label">
-              Test <span class="wizard-required-indicator">*</span>
+              Test <span class="wizard-optional-indicator">(optional)</span>
             </label>
             <input
               class="wizard-input wizard-input-mono"
@@ -2049,11 +2066,19 @@ function StepAdvanced() {
                 <div class="settings-select-wrap">
                   <select
                     class="settings-select"
-                    value={d.earlyStoppingMonitor}
+                    value={d.taskType === "Object Detection" ? "val/map" : d.earlyStoppingMonitor}
+                    disabled={d.taskType === "Object Detection"}
                     onChange={(e) => wizardSetField("earlyStoppingMonitor", e.target.value)}
                   >
-                    <option value="val/loss">Validation Loss</option>
-                    <option value="val/accuracy">Validation Accuracy</option>
+                    {d.taskType === "Object Detection" ? (
+                      // Detection logs no validation loss or accuracy.
+                      <option value="val/map">Validation mAP</option>
+                    ) : (
+                      <>
+                        <option value="val/loss">Validation Loss</option>
+                        <option value="val/accuracy">Validation Accuracy</option>
+                      </>
+                    )}
                   </select>
                   <span class="settings-select-chevron" />
                 </div>

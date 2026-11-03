@@ -15,6 +15,7 @@ import {
   deleteRun as dbDeleteRun,
 } from "../db/database.js";
 import { pickTestAcc, testMetricsFromScalars } from "../utils/testMetrics.js";
+import { runSeries } from "../utils/runCurves.js";
 
 /**
  * Resolve the actual backbone/model name from a project's category and task type.
@@ -206,8 +207,15 @@ export async function loadRunScalars(run, force = false) {
           updates.scalars[tag] = updates.scalars[tag].slice(-1);
         }
         updates.testMetrics = testMetrics;
-        const testAcc = pickTestAcc(testMetrics);
+        const testAcc = pickTestAcc(testMetrics, run.taskType);
         if (testAcc != null) updates.testAcc = testAcc;
+      }
+
+      // Imported runs have no live validation history; take the best headline
+      // score (accuracy, or mAP for detection) from the logs.
+      if (run.bestAcc == null) {
+        const { valAcc } = runSeries({ taskType: run.taskType, scalars: updates.scalars });
+        if (valAcc.length) updates.bestAcc = Math.max(...valAcc);
       }
     }
 
