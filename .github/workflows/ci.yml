@@ -109,23 +109,29 @@ jobs:
         # 5xx. Fetch them first with retries into the folder Tauri checks, so
         # it skips its own download. Versions match what `tauri build` logs
         # for the Tauri CLI in package-lock.json; update them together.
+        # Release assets go through `gh release download` (GitHub API) first,
+        # because the plain download URLs can 504 while the API still works.
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $tools = Join-Path $env:LOCALAPPDATA 'tauri'
           $nsis  = Join-Path $tools 'NSIS'
           $dll   = Join-Path $nsis 'Plugins\x86-unicode\additional\nsis_tauri_utils.dll'
-          function Fetch($url, $out) {
-            for ($i = 1; $i -le 6; $i++) {
-              try { Invoke-WebRequest $url -OutFile $out -UseBasicParsing; return }
-              catch { Write-Host "Attempt $i for $url failed: $_"; Start-Sleep -Seconds (15 * $i) }
+          function Fetch($repo, $tag, $asset, $out) {
+            for ($i = 1; $i -le 5; $i++) {
+              gh release download $tag -R $repo -p $asset -O $out --clobber
+              if ($LASTEXITCODE -eq 0) { return }
+              try { Invoke-WebRequest "https://github.com/$repo/releases/download/$tag/$asset" -OutFile $out -UseBasicParsing; return }
+              catch { Write-Host "Attempt $i for $asset failed: $_"; Start-Sleep -Seconds (10 * $i) }
             }
-            throw "Could not download $url"
+            throw "Could not download $asset"
           }
           if (-not (Test-Path (Join-Path $nsis 'makensis.exe'))) {
             $zip = Join-Path $env:RUNNER_TEMP 'nsis-3.11.zip'
-            Fetch 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip' $zip
+            Fetch 'tauri-apps/binary-releases' 'nsis-3.11' 'nsis-3.11.zip' $zip
             New-Item -ItemType Directory -Force $tools | Out-Null
             Remove-Item $nsis -Recurse -Force -ErrorAction SilentlyContinue
             Expand-Archive $zip -DestinationPath $tools -Force
@@ -133,7 +139,7 @@ jobs:
           }
           if (-not (Test-Path $dll)) {
             New-Item -ItemType Directory -Force (Split-Path $dll) | Out-Null
-            Fetch 'https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll' $dll
+            Fetch 'tauri-apps/nsis-tauri-utils' 'nsis_tauri_utils-v0.5.3' 'nsis_tauri_utils.dll' $dll
           }
           Get-ChildItem $nsis -Filter makensis.exe | Select-Object FullName, Length
           Get-Item $dll | Select-Object FullName, Length
@@ -144,24 +150,42 @@ jobs:
         # retries into ~/.cache/tauri, where Tauri looks before downloading.
         # File names and URLs match tauri-bundler for the Tauri CLI in
         # package-lock.json; update them together.
+        # The plain release-download URLs can return 504 for long stretches
+        # while the GitHub API still works, so release assets are fetched with
+        # `gh release download` (API path) first and the plain URL second.
         if: runner.os == 'Linux'
         continue-on-error: true
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set +e  # one failed tool must not stop the others from being fetched
           tools="$HOME/.cache/tauri"
           mkdir -p "$tools"
-          fetch() {
-            local out="$tools/$1" url="$2"
+          save() { mv "$1.part" "$1" && chmod +x "$1"; }
+          fetch_release() {  # <file name> <repo> <tag> <asset>
+            local out="$tools/$1" repo="$2" tag="$3" asset="$4"
             [ -s "$out" ] && return 0
-            curl -fSL --retry 6 --retry-delay 15 --retry-all-errors -o "$out.part" "$url" \
-              && mv "$out.part" "$out" && chmod +x "$out"
+            for i in 1 2 3 4 5; do
+              rm -f "$out.part"
+              gh release download "$tag" -R "$repo" -p "$asset" -O "$out.part" --clobber && save "$out" && return 0
+              curl -fsSL -o "$out.part" "https://github.com/$repo/releases/download/$tag/$asset" && save "$out" && return 0
+              echo "Attempt $i for $asset failed"; sleep $((10 * i))
+            done
+            echo "::warning::Could not pre-fetch $1"; return 1
           }
-          fetch AppRun-x86_64 https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64
-          fetch linuxdeploy-x86_64.AppImage https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage
-          fetch linuxdeploy-plugin-gtk.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
-          fetch linuxdeploy-plugin-gstreamer.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
-          # Optional for Tauri (it falls back to a built-in copy), so don't fail on it.
-          fetch linuxdeploy-plugin-appimage.AppImage https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage || true
+          fetch_raw() {  # <file name> <url>
+            local out="$tools/$1"
+            [ -s "$out" ] && return 0
+            curl -fSL --retry 6 --retry-delay 15 --retry-all-errors -o "$out.part" "$2" && save "$out" \
+              || echo "::warning::Could not pre-fetch $1"
+          }
+          fetch_release AppRun-x86_64 tauri-apps/binary-releases apprun-old AppRun-x86_64
+          fetch_release linuxdeploy-x86_64.AppImage tauri-apps/binary-releases linuxdeploy linuxdeploy-x86_64.AppImage
+          fetch_raw linuxdeploy-plugin-gtk.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+          fetch_raw linuxdeploy-plugin-gstreamer.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
+          # Optional for Tauri (it falls back to a built-in copy).
+          fetch_release linuxdeploy-plugin-appimage.AppImage linuxdeploy/linuxdeploy-plugin-appimage continuous linuxdeploy-plugin-appimage-x86_64.AppImage
           ls -l "$tools"
 
       - name: Build Tauri app
