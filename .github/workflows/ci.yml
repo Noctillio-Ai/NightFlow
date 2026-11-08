@@ -138,6 +138,32 @@ jobs:
           Get-ChildItem $nsis -Filter makensis.exe | Select-Object FullName, Length
           Get-Item $dll | Select-Object FullName, Length
 
+      - name: Pre-fetch AppImage tools (Linux)
+        # Same idea as the NSIS step: Tauri downloads these from GitHub while
+        # bundling the AppImage and fails on any 5xx. Fetch them first with
+        # retries into ~/.cache/tauri, where Tauri looks before downloading.
+        # File names and URLs match tauri-bundler for the Tauri CLI in
+        # package-lock.json; update them together.
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        shell: bash
+        run: |
+          tools="$HOME/.cache/tauri"
+          mkdir -p "$tools"
+          fetch() {
+            local out="$tools/$1" url="$2"
+            [ -s "$out" ] && return 0
+            curl -fSL --retry 6 --retry-delay 15 --retry-all-errors -o "$out.part" "$url" \
+              && mv "$out.part" "$out" && chmod +x "$out"
+          }
+          fetch AppRun-x86_64 https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64
+          fetch linuxdeploy-x86_64.AppImage https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage
+          fetch linuxdeploy-plugin-gtk.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+          fetch linuxdeploy-plugin-gstreamer.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
+          # Optional for Tauri (it falls back to a built-in copy), so don't fail on it.
+          fetch linuxdeploy-plugin-appimage.AppImage https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage || true
+          ls -l "$tools"
+
       - name: Build Tauri app
         id: build
         # A transient download error while bundling is retried once below.

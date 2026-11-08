@@ -7,6 +7,7 @@ import { createRouteMemory } from "./state/routeMemory.js";
 import { projectList, loadProjects, currentProjectId } from "./state/projects.js";
 import { loadRuns } from "./state/experiments.js";
 import { Sidebar } from "./components/Sidebar.jsx";
+import { pageTone } from "./utils/pageTones.js";
 import { Header } from "./components/Header.jsx";
 import { DashboardView } from "./views/DashboardView.jsx";
 import { ExperimentsView } from "./views/ExperimentsView.jsx";
@@ -74,6 +75,12 @@ effect(() => {
   if (!list.length) return;
   const ids = new Set(list.map((p) => p.id));
   for (const id of [...routeMemory.remembered.keys()]) if (!ids.has(id)) routeMemory.forget(id);
+});
+
+// The page accent lives on the root so dialogs rendered outside the shell
+// pick it up too (see polish.css).
+effect(() => {
+  document.documentElement.style.setProperty("--app-tone", pageTone(currentPage.value));
 });
 
 export const aboutOpen = signal(false);
@@ -185,12 +192,14 @@ export function App() {
       {!hasProjects ? (
         <EmptyProjectsScreen />
       ) : (
-        <div class="app-shell">
+        <div class="app-shell" data-page={currentPage.value}>
           <Sidebar />
           <div class="app-main">
             <Header />
             <div class="app-content">
-              <CurrentView />
+              <div class="app-view" key={currentPage.value}>
+                <CurrentView />
+              </div>
             </div>
           </div>
         </div>

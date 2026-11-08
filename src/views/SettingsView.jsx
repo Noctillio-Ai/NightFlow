@@ -1,5 +1,6 @@
 import { CsvColumnFields } from "../components/CsvColumnFields.jsx";
-import { useState, useEffect, useRef } from "preact/hooks";
+import { useState, useEffect, useRef, useContext } from "preact/hooks";
+import { createContext } from "preact";
 import { signal } from "@preact/signals";
 import { invoke } from "@tauri-apps/api/core";
 import { validateTrainingProject } from "../utils/configBuilder.js";
@@ -29,6 +30,25 @@ import { startTutorial } from "../state/tutorial.js";
 import { EDITABLE_KEYS, SETTINGS_GROUPS, SETTINGS_CATEGORIES, dirtyCategories } from "../utils/settingsCategories.js";
 
 const READONLY_KEYS = ["taskType"];
+
+/** Accent hue per category: tints the nav, panel header, tiles and controls. */
+const TONES = {
+  general: "#818cf8",
+  connection: "#22d3ee",
+  dataset: "#fbbf24",
+  model: "#a78bfa",
+  hyperparameters: "#f472b6",
+  input: "#34d399",
+  hardware: "#fb923c",
+  appearance: "#facc15",
+  ssh: "#2dd4bf",
+  transfer: "#60a5fa",
+  danger: "#ef4444",
+};
+const tone = (id) => TONES[id] || TONES.general;
+
+/** Fields changed in the draft but not yet saved; lets each tile mark itself. */
+const DirtyKeys = createContext(new Set());
 
 /** Tasks whose CSV datasets carry a mask column alongside the image column. */
 const SEGMENTATION_TASKS = ["Semantic Segmentation", "Instance Segmentation"];
@@ -116,19 +136,56 @@ function Toggle({ on, disabled, label, onChange }) {
 }
 
 /**
- * One setting: label and hint on the left, the control on the right.
- * `stack` puts the control under the text (wide content such as CSV columns).
+ * One setting, drawn as a tile in the panel grid. By default the label and
+ * hint sit above a full-width control; `inline` keeps the control on the
+ * right (switches, buttons, read-only values) and `wide` spans every column.
  */
-function Row({ label, hint, children, stack = false, as = "label" }) {
+function Row({ label, hint, children, inline = false, wide = false, as = "label", k }) {
   const Tag = as;
+  const edited = useContext(DirtyKeys).has(k);
   return (
-    <Tag class={`sv-row${stack ? " sv-row--stack" : ""}`}>
+    <Tag class={`sv-field${inline ? " sv-field--inline" : ""}${wide ? " sv-field--wide" : ""}${edited ? " is-edited" : ""}`}>
       <span class="sv-row-text">
-        <span class="sv-row-label">{label}</span>
+        <span class="sv-row-label">
+          {label}
+          {edited && <span class="sv-edited">Edited</span>}
+        </span>
         {hint && <span class="sv-row-hint">{hint}</span>}
       </span>
       <span class="sv-row-control">{children}</span>
     </Tag>
+  );
+}
+
+/** Titled group of tiles inside a panel. */
+function Group({ title, children }) {
+  return (
+    <div class="sv-group">
+      {title && <div class="sv-subhead">{title}</div>}
+      <div class="sv-grid">{children}</div>
+    </div>
+  );
+}
+
+/** Clickable summary card on the General panel that jumps to a category. */
+function OverviewCard({ id, items }) {
+  const c = SETTINGS_CATEGORIES.find((x) => x.id === id);
+  return (
+    <button type="button" class="sv-ov" style={{ "--sv-tone": tone(id) }} onClick={() => (settingsCategory.value = id)}>
+      <span class="sv-ov-head">
+        <SectionIcon id={id} size={15} tile={false} />
+        <span class="sv-ov-title">{c.label}</span>
+        <span class="sv-ov-arrow" aria-hidden="true">→</span>
+      </span>
+      <dl class="sv-ov-list">
+        {items.map(([k, v]) => (
+          <div key={k} class="sv-ov-item">
+            <dt>{k}</dt>
+            <dd title={String(v)}>{v === "" || v == null ? "auto" : String(v)}</dd>
+          </div>
+        ))}
+      </dl>
+    </button>
   );
 }
 
@@ -199,7 +256,7 @@ function ClearAllDataRow() {
   const [showDialog, setShowDialog] = useState(false);
   return (
     <>
-      <Row as="div" label="Clear all data" hint="Wipes every project, run and metric from the app. Cannot be undone.">
+      <Row as="div" inline wide label="Clear all data" hint="Wipes every project, run and metric from the app. Cannot be undone.">
         <button class="settings-danger-btn" onClick={() => setShowDialog(true)}>
           <span dangerouslySetInnerHTML={{ __html: trashIcon }} />
           Clear all data
@@ -305,6 +362,19 @@ export function SettingsView() {
   const [augSourceImage, setAugSourceImage] = useState(null);
   const [augDragging, setAugDragging] = useState(false);
 
+  // ⌘S / Ctrl+S saves when there is something to save.
+  const saveRef = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && saveRef.current) {
+        e.preventDefault();
+        saveRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   /** Shared by the file picker and the drop target. */
   const runAugPreview = (file) => {
     if (!file || !file.type.startsWith("image/")) return;
@@ -400,6 +470,10 @@ export function SettingsView() {
     }
   }
 
+  saveRef.current = dirty && !locked ? handleSave : null;
+  const dirtyKeys = new Set(EDITABLE_KEYS.filter((k) => draft[k] !== (proj[k] ?? "")));
+  const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
+
   function handleDiscard() {
     setDraft(pick(proj));
     setSaved(false);
@@ -473,24 +547,34 @@ export function SettingsView() {
   const panels = {
     general: (
       <>
-        <Row label="Project name">
+        <Group title="Identity">
+        <Row k="name" label="Project name">
           <input class="settings-input sv-w-lg" type="text" value={draft.name} placeholder="My Project" disabled={locked} onInput={(e) => set("name", e.target.value)} />
         </Row>
-        <Row label="Project folder" hint="Logs, checkpoints and exports are stored here">
+        <Row k="projectPath" wide label="Project folder" hint="Logs, checkpoints and exports are stored here">
           <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.projectPath || ""} placeholder={derivedProjectPath} disabled={locked} onInput={(e) => set("projectPath", e.target.value)} />
         </Row>
-        <Row as="div" label="Task type" hint="Set when the project was created">
+        <Row as="div" inline label="Task type" hint="Set when the project was created">
           <span class="sv-static"><span dangerouslySetInnerHTML={{ __html: lockIcon }} />{draft.taskType}</span>
         </Row>
-        <Row as="div" label="Project ID">
+        <Row as="div" inline label="Project ID">
           <span class="sv-static sv-static--mono">{proj.id}</span>
         </Row>
+        </Group>
+        <Group title="Configuration at a glance">
+          <OverviewCard id="connection" items={[["Runs on", draft.connectionType === "remote" ? "Remote (SSH)" : "This machine"], ["Host", draft.connectionType === "remote" ? (draft.sshCommand || "").replace(/^ssh\s+/, "") : "localhost"]]} />
+          <OverviewCard id="dataset" items={[["Format", draft.datasetFormat], ["Classes", isDetection ? "from annotations" : draft.numClasses]]} />
+          <OverviewCard id="model" items={[["Category", draft.modelCategory], [isDetection ? "Architecture" : isSegmentation ? "Head" : "Backbone", isDetection ? draft.detectionArch : isSegmentation ? draft.segHeadType : draft.freezeBackbone ? "frozen" : "trainable"]]} />
+          <OverviewCard id="hyperparameters" items={[["Epochs", draft.maxEpochs], ["Batch size", draft.batchSize], ["Learning rate", draft.learningRate]]} />
+          <OverviewCard id="input" items={[["Image size", draft.imageSize], ["Augmentation", draft.augmentationPreset]]} />
+          <OverviewCard id="hardware" items={[["Accelerator", accelerator], ["Precision", draft.precision]]} />
+        </Group>
       </>
     ),
 
     connection: (
-      <>
-        <Row as="div" label="Run training on" hint={draft.connectionType === "remote" ? "A machine reached over SSH" : "This computer"}>
+      <Group>
+        <Row k="connectionType" as="div" label="Run training on" hint={draft.connectionType === "remote" ? "A machine reached over SSH" : "This computer"}>
           <Seg
             label="Run training on"
             value={draft.connectionType || "localhost"}
@@ -504,35 +588,42 @@ export function SettingsView() {
           />
         </Row>
         {draft.connectionType === "remote" && (
-          <Row label="SSH command" hint="How you'd connect from a terminal">
+          <Row k="sshCommand" wide label="SSH command" hint="How you'd connect from a terminal">
             <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.sshCommand} placeholder="ssh user@host" disabled={locked} onInput={(e) => set("sshCommand", e.target.value)} />
           </Row>
         )}
-      </>
+      </Group>
     ),
 
     dataset: (
       <>
-        <Row label="Format" hint={`${datasetFormats.length} format${datasetFormats.length !== 1 ? "s" : ""} available for ${draft.taskType}`}>
+        <Group title="Source">
+        <Row k="datasetFormat" label="Format" hint={`${datasetFormats.length} format${datasetFormats.length !== 1 ? "s" : ""} available for ${draft.taskType}`}>
           <Select value={draft.datasetFormat || ""} disabled={locked} onChange={(v) => set("datasetFormat", v)}>
             <option value="">Select format</option>
             {datasetFormats.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
           </Select>
         </Row>
         {draft.datasetFormat && !isTabular && (
-          <Row label="Dataset folder" hint={`The ${draft.datasetFormat} dataset root`}>
+          <Row k="folderPath" wide label="Dataset folder" hint={`The ${draft.datasetFormat} dataset root`}>
             <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.folderPath || ""} placeholder={winPath ? "C:\\path\\to\\dataset" : "/path/to/dataset"} disabled={locked} onInput={(e) => set("folderPath", e.target.value)} />
           </Row>
         )}
+        {!isDetection && (
+          <Row k="numClasses" label="Number of classes">
+            <input class="settings-input sv-w-sm" type="number" min="2" value={draft.numClasses} placeholder="e.g. 10" disabled={locked} onInput={(e) => set("numClasses", numOrEmpty(e.target.value))} />
+          </Row>
+        )}
+        </Group>
         {isTabular && (
-          <>
-            <Row label="Train file">
+          <Group title="Files">
+            <Row k="trainPath" label="Train file">
               <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.trainPath || ""} placeholder={winPath ? `C:\\path\\to\\train.${fmtLower}` : `/path/to/train.${fmtLower}`} disabled={locked} onInput={(e) => set("trainPath", e.target.value)} />
             </Row>
-            <Row label="Validation file" hint="Optional">
+            <Row k="valPath" label="Validation file" hint="Optional">
               <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.valPath || ""} placeholder={winPath ? `C:\\path\\to\\val.${fmtLower}` : `/path/to/val.${fmtLower}`} disabled={locked} onInput={(e) => set("valPath", e.target.value)} />
             </Row>
-            <Row label="Test file">
+            <Row k="testPath" label="Test file">
               <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.testPath || ""} placeholder={winPath ? `C:\\path\\to\\test.${fmtLower}` : `/path/to/test.${fmtLower}`} disabled={locked} onInput={(e) => set("testPath", e.target.value)} />
             </Row>
             {/* Semantic segmentation resolves this as AutoTimm's data_dir and
@@ -544,64 +635,71 @@ export function SettingsView() {
             >
               <input class="settings-input settings-input-mono sv-w-xl" value={draft.imageFolderPath} disabled={locked} onInput={(e) => set("imageFolderPath", e.target.value)} />
             </Row>
-          </>
+          </Group>
         )}
         {draft.datasetFormat === "CSV" && (
-          <div class="sv-row sv-row--block">
-            <CsvColumnFields value={draft} onChange={set} disabled={locked} />
-          </div>
-        )}
-        {!isDetection && (
-          <Row label="Number of classes">
-            <input class="settings-input sv-w-sm" type="number" min="2" value={draft.numClasses} placeholder="e.g. 10" disabled={locked} onInput={(e) => set("numClasses", numOrEmpty(e.target.value))} />
-          </Row>
+          <Group title="Columns">
+            <div class="sv-field sv-field--wide sv-field--block">
+              <CsvColumnFields value={draft} onChange={set} disabled={locked} />
+            </div>
+          </Group>
         )}
       </>
     ),
 
     model: (
       <>
-        <Row label="Model category" hint={modelCatDesc || "Deployment target tier"}>
+        <Group title="Architecture">
+        <Row k="modelCategory" label="Model category" hint={modelCatDesc || "Deployment target tier"}>
           <Select value={draft.modelCategory} disabled={locked} onChange={(v) => set("modelCategory", v)}>
             <option value="">Select category</option>
             {Object.keys(modelCatSource).map((k) => <option key={k} value={k}>{k}</option>)}
           </Select>
         </Row>
         {isDetection && (
-          <Row label="Detection architecture">
+          <Row k="detectionArch" label="Detection architecture">
             <Select value={draft.detectionArch} disabled={locked} onChange={(v) => set("detectionArch", v)}>
               {DETECTION_ARCHS.map((a) => <option key={a} value={a}>{a}</option>)}
             </Select>
           </Row>
         )}
         {isSegmentation && (
-          <Row label="Segmentation head">
+          <Row k="segHeadType" label="Segmentation head">
             <Select value={draft.segHeadType} disabled={locked} onChange={(v) => set("segHeadType", v)}>
               {SEG_HEAD_TYPES.map((h) => <option key={h} value={h}>{h}</option>)}
             </Select>
           </Row>
         )}
-        <Row as="div" label="Freeze backbone" hint="Keep pretrained backbone weights fixed">
+        </Group>
+        <Group title="Behaviour">
+        <Row k="freezeBackbone" as="div" inline label="Freeze backbone" hint="Keep pretrained backbone weights fixed">
           <Toggle on={!!draft.freezeBackbone} disabled={locked} label="Freeze backbone" onChange={(v) => set("freezeBackbone", v)} />
         </Row>
-        <Row as="div" label="Compile model" hint="Faster on CUDA; leave off for CPU and Metal">
+        <Row k="compileModel" as="div" inline label="Compile model" hint="Faster on CUDA; leave off for CPU and Metal">
           <Toggle on={!!draft.compileModel} disabled={locked} label="Compile model" onChange={(v) => set("compileModel", v)} />
         </Row>
+        </Group>
       </>
     ),
 
     hyperparameters: (
       <>
-        <Row label="Max epochs">
+        <Group title="Schedule">
+        <Row k="maxEpochs" label="Max epochs">
           <input class="settings-input sv-w-sm" type="number" min="1" value={draft.maxEpochs} disabled={locked} onInput={(e) => set("maxEpochs", numOrEmpty(e.target.value))} />
         </Row>
-        <Row label="Batch size">
+        <Row k="batchSize" label="Batch size">
           <input class="settings-input sv-w-sm" type="number" min="1" value={draft.batchSize} placeholder="auto" disabled={locked} onInput={(e) => set("batchSize", numOrEmpty(e.target.value))} />
         </Row>
-        <Row label="Learning rate" hint="Empty uses the AutoTimm default">
+        <Row k="seed" label="Seed" hint="Empty for a random seed">
+          <input class="settings-input sv-w-sm" type="number" min="0" value={draft.seed} placeholder="random" disabled={locked} onInput={(e) => set("seed", numOrEmpty(e.target.value))} />
+        </Row>
+        </Group>
+        <Group title="Optimisation">
+        <Row k="learningRate" label="Learning rate" hint="Empty uses the AutoTimm default">
           <input class="settings-input sv-w-sm" type="number" step="any" value={draft.learningRate} placeholder="auto" disabled={locked} onInput={(e) => set("learningRate", numOrEmpty(e.target.value))} />
         </Row>
-        <Row label="Optimizer">
+        <Row k="optimizer" label="Optimizer">
           <Select value={draft.optimizer} disabled={locked} onChange={(v) => set("optimizer", v)}>
             <option value="">Auto (default)</option>
             <option value="adamw">AdamW</option>
@@ -609,7 +707,7 @@ export function SettingsView() {
             <option value="sgd">SGD</option>
           </Select>
         </Row>
-        <Row label="Scheduler">
+        <Row k="scheduler" label="Scheduler">
           <Select value={draft.scheduler} disabled={locked} onChange={(v) => set("scheduler", v)}>
             <option value="">Auto (default)</option>
             <option value="cosine">Cosine</option>
@@ -618,22 +716,20 @@ export function SettingsView() {
             <option value="none">None</option>
           </Select>
         </Row>
-        <Row label="Weight decay" hint="L2 regularization">
+        <Row k="weightDecay" label="Weight decay" hint="L2 regularization">
           <input class="settings-input sv-w-sm" type="number" step="any" value={draft.weightDecay} placeholder="auto" disabled={locked} onInput={(e) => set("weightDecay", numOrEmpty(e.target.value))} />
         </Row>
-        <Row label="Gradient clip" hint="Max gradient norm">
+        <Row k="gradientClipVal" label="Gradient clip" hint="Max gradient norm">
           <input class="settings-input sv-w-sm" type="number" step="any" value={draft.gradientClipVal} placeholder="auto" disabled={locked} onInput={(e) => set("gradientClipVal", numOrEmpty(e.target.value))} />
         </Row>
-        <Row label="Seed" hint="Empty for a random seed">
-          <input class="settings-input sv-w-sm" type="number" min="0" value={draft.seed} placeholder="random" disabled={locked} onInput={(e) => set("seed", numOrEmpty(e.target.value))} />
-        </Row>
-        <div class="sv-subhead">Early stopping</div>
-        <Row as="div" label="Stop early" hint="Halt when the metric stops improving">
+        </Group>
+        <Group title="Early stopping">
+        <Row k="earlyStopping" as="div" inline label="Stop early" hint="Halt when the metric stops improving">
           <Toggle on={!!draft.earlyStopping} disabled={locked} label="Early stopping" onChange={(v) => set("earlyStopping", v)} />
         </Row>
         {draft.earlyStopping && (
           <>
-            <Row label="Monitor" hint={isDetection ? "Detection only logs mAP" : null}>
+            <Row k="earlyStoppingMonitor" label="Monitor" hint={isDetection ? "Detection only logs mAP" : null}>
               <Select value={isDetection ? "val/map" : draft.earlyStoppingMonitor} disabled={locked || isDetection} onChange={(v) => set("earlyStoppingMonitor", v)}>
                 {isDetection ? (
                   // Detection logs no validation loss or accuracy.
@@ -646,20 +742,21 @@ export function SettingsView() {
                 )}
               </Select>
             </Row>
-            <Row label="Patience" hint="Epochs without improvement">
+            <Row k="earlyStoppingPatience" label="Patience" hint="Epochs without improvement">
               <input class="settings-input sv-w-sm" type="number" min="1" value={draft.earlyStoppingPatience} placeholder="10" disabled={locked} onInput={(e) => set("earlyStoppingPatience", numOrEmpty(e.target.value))} />
             </Row>
           </>
         )}
+        </Group>
       </>
     ),
 
     input: (
-      <>
-        <Row label="Image size" hint="Input resolution in pixels">
+      <Group>
+        <Row k="imageSize" label="Image size" hint="Input resolution in pixels">
           <input class="settings-input sv-w-sm" type="number" min="1" value={draft.imageSize} placeholder="auto" disabled={locked} onInput={(e) => set("imageSize", numOrEmpty(e.target.value))} />
         </Row>
-        <Row as="div" label="Augmentation preset" hint="Random transforms applied while training">
+        <Row k="augmentationPreset" as="div" label="Augmentation preset" hint="Random transforms applied while training">
           <span class="sv-inline">
             <Select value={draft.augmentationPreset} disabled={locked} onChange={(v) => set("augmentationPreset", v)}>
               {/* Mirrors AutoTimm's TORCHVISION_PRESETS registry, in order. */}
@@ -675,12 +772,12 @@ export function SettingsView() {
             </button>
           </span>
         </Row>
-      </>
+      </Group>
     ),
 
     hardware: (
-      <>
-        <Row label="Accelerator">
+      <Group>
+        <Row k="accelerator" label="Accelerator">
           <Select
             value={accelerator}
             disabled={locked}
@@ -693,11 +790,11 @@ export function SettingsView() {
           </Select>
         </Row>
         {(accelerator === "cuda" || accelerator === "auto") && (
-          <Row label="GPU devices" hint="CUDA indices, e.g. 0 or 0,1">
+          <Row k="gpuDevices" label="GPU devices" hint="CUDA indices, e.g. 0 or 0,1">
             <input class="settings-input settings-input-mono sv-w-sm" type="text" value={draft.gpuDevices} placeholder="auto" disabled={locked} onInput={(e) => set("gpuDevices", e.target.value)} />
           </Row>
         )}
-        <Row label="Precision">
+        <Row k="precision" label="Precision">
           <Select value={draft.precision} disabled={locked} onChange={(v) => set("precision", v)}>
             <option value="">Auto (default)</option>
             <option value="32">32-bit (float32)</option>
@@ -705,14 +802,14 @@ export function SettingsView() {
             <option value="bf16-mixed">bf16-mixed</option>
           </Select>
         </Row>
-        <Row label="Data-loader workers" hint="Empty uses the AutoTimm default">
+        <Row k="numWorkers" label="Data-loader workers" hint="Empty uses the AutoTimm default">
           <input class="settings-input sv-w-sm" type="number" min="0" value={draft.numWorkers} placeholder="auto" disabled={locked} onInput={(e) => set("numWorkers", numOrEmpty(e.target.value))} />
         </Row>
-      </>
+      </Group>
     ),
 
     appearance: (
-      <>
+      <Group>
         <Row as="div" label="Theme">
           <Seg
             label="Theme"
@@ -721,55 +818,68 @@ export function SettingsView() {
             onChange={toggleTheme}
           />
         </Row>
-        <Row as="div" label="App tour" hint="Replay the first-run walkthrough">
+        <Row as="div" inline label="App tour" hint="Replay the first-run walkthrough">
           <button type="button" class="settings-action-btn" onClick={startTutorial}>Restart tour</button>
         </Row>
-      </>
+      </Group>
     ),
 
-    ssh: <SshKeysList />,
+    ssh: <div class="sv-group"><SshKeysList /></div>,
 
     transfer: (
-      <>
-        <Row as="div" label="Export this project" hint="Settings and runs as one JSON file">
+      <Group>
+        <Row as="div" inline label="Export this project" hint="Settings and runs as one JSON file">
           <button type="button" class="settings-action-btn" onClick={exportProject}>Export</button>
         </Row>
-        <Row as="div" label="Import a project" hint="Creates a new project from an exported file">
+        <Row as="div" inline label="Import a project" hint="Creates a new project from an exported file">
           <button type="button" class="settings-action-btn" onClick={importProject}>Import</button>
         </Row>
-      </>
+      </Group>
     ),
 
     danger: (
-      <>
-        <Row as="div" label="Delete this project" hint="Removes the project and its runs from NightFlow. Cannot be undone.">
+      <Group>
+        <Row as="div" inline wide label="Delete this project" hint="Removes the project and its runs from NightFlow. Cannot be undone.">
           <button class="settings-danger-btn" disabled={locked} onClick={() => openDeleteDialog(proj.id)}>
             <span dangerouslySetInnerHTML={{ __html: trashIcon }} />
             Delete project
           </button>
         </Row>
         <ClearAllDataRow />
-      </>
+      </Group>
     ),
   };
 
   return (
-    <div class="settings-view dash rd sv">
-      <header class="rd-head sv-head">
-        <div class="rd-head-main">
-          <span class="rd-eyebrow sv-eyebrow">Project settings</span>
-          <div class="rd-title">
-            <h2>{proj.name || "Untitled project"}</h2>
-          </div>
-          <div class="sv-chips">
-            <span class="sv-chip">{proj.taskType || "Classification"}</span>
-            {proj.datasetFormat && <span class="sv-chip">{proj.datasetFormat} dataset</span>}
-            <span class="sv-chip">
-              {proj.connectionType === "remote" ? (proj.sshCommand || "Remote").replace(/^ssh\s+/, "") : "Local compute"}
-            </span>
-            <span class="sv-chip">{runCount} {runCount === 1 ? "run" : "runs"}</span>
+    <div class="settings-view dash rd sv" style={{ "--sv-tone": tone(category.id) }}>
+      <header class="sv-hero">
+        <div class="sv-hero-glow" aria-hidden="true" />
+        <div class="sv-hero-main">
+          <span class="sv-avatar" aria-hidden="true">{(proj.name || "U").split(/[\s_-]+|(?=[A-Z][a-z])/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("")}</span>
+          <div class="sv-hero-text">
+            <span class="sv-eyebrow">Project settings</span>
+            <h2 class="sv-hero-title">{proj.name || "Untitled project"}</h2>
+            <span class="sv-hero-path" title={proj.projectPath || derivedProjectPath}>{proj.projectPath || derivedProjectPath}</span>
           </div>
         </div>
+        <dl class="sv-stats">
+          <div class="sv-stat" style={{ "--sv-tone": tone("general") }}>
+            <dt>Task</dt>
+            <dd>{proj.taskType || "Classification"}</dd>
+          </div>
+          <div class="sv-stat" style={{ "--sv-tone": tone("dataset") }}>
+            <dt>Dataset</dt>
+            <dd>{proj.datasetFormat || "—"}</dd>
+          </div>
+          <div class="sv-stat" style={{ "--sv-tone": tone("connection") }}>
+            <dt>Compute</dt>
+            <dd title={proj.sshCommand}>{proj.connectionType === "remote" ? (proj.sshCommand || "Remote").replace(/^ssh\s+/, "") : "Local"}</dd>
+          </div>
+          <div class="sv-stat" style={{ "--sv-tone": tone("hyperparameters") }}>
+            <dt>Runs</dt>
+            <dd class="sv-stat-num">{runCount}</dd>
+          </div>
+        </dl>
       </header>
 
       {locked && (
@@ -792,12 +902,17 @@ export function SettingsView() {
                   key={c.id}
                   type="button"
                   class={`sv-nav-item${c.id === category.id ? " is-active" : ""}${c.danger ? " is-danger" : ""}`}
+                  style={{ "--sv-tone": tone(c.id) }}
                   aria-current={c.id === category.id ? "page" : undefined}
                   onClick={() => (settingsCategory.value = c.id)}
                 >
                   <SectionIcon id={c.id} size={15} tile={false} />
                   <span class="sv-nav-text">{c.label}</span>
-                  {dirtyCats.has(c.id) && <span class="sv-nav-dot" title="Unsaved changes" />}
+                  {dirtyCats.has(c.id) && (
+                    <span class="sv-nav-badge" title="Unsaved changes">
+                      {c.keys.filter((k) => dirtyKeys.has(k)).length}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -805,15 +920,32 @@ export function SettingsView() {
         </nav>
 
         <div class="sv-main">
-        <section class={`sv-panel${category.danger ? " is-danger" : ""}`} aria-labelledby="sv-panel-title">
+        <section
+          key={category.id}
+          class={`sv-panel${category.danger ? " is-danger" : ""}`}
+          style={{ "--sv-tone": tone(category.id) }}
+          aria-labelledby="sv-panel-title"
+        >
           <header class="sv-panel-head">
-            <SectionIcon id={category.id} />
-            <div>
+            <SectionIcon id={category.id} size={20} />
+            <div class="sv-panel-title">
               <h2 id="sv-panel-title">{category.label}</h2>
               <p>{category.desc}</p>
             </div>
+            {category.keys.length > 0 && (
+              <div class="sv-panel-meta">
+                <span class="sv-pill">{category.keys.length} settings</span>
+                {dirtyCats.has(category.id) && (
+                  <span class="sv-pill sv-pill--warn">
+                    {category.keys.filter((k) => dirtyKeys.has(k)).length} edited
+                  </span>
+                )}
+              </div>
+            )}
           </header>
-          <div class="sv-rows">{panels[category.id]}</div>
+          <DirtyKeys.Provider value={dirtyKeys}>
+            <div class="sv-body">{panels[category.id]}</div>
+          </DirtyKeys.Provider>
         </section>
           {/* Save bar */}
           <div class={`settings-save-bar ${dirty || saved ? "visible" : ""}`}>
@@ -824,7 +956,14 @@ export function SettingsView() {
               </div>
             ) : (
               <>
-                <span class="settings-save-hint">You have unsaved changes</span>
+                <span class="settings-save-hint">
+                  {dirtyKeys.size} unsaved {dirtyKeys.size === 1 ? "change" : "changes"}
+                  {dirtyCats.size > 0 && (
+                    <span class="sv-save-cats">
+                      in {[...dirtyCats].map((id) => SETTINGS_CATEGORIES.find((c) => c.id === id)?.label).join(", ")}
+                    </span>
+                  )}
+                </span>
                 <div class="settings-save-actions">
                   <button class="settings-discard-btn" onClick={handleDiscard}>
                     Discard
@@ -834,7 +973,8 @@ export function SettingsView() {
                     disabled={locked}
                     onClick={handleSave}
                   >
-                    Save Changes
+                    Save changes
+                    <kbd class="sv-kbd">{isMac ? "⌘S" : "Ctrl+S"}</kbd>
                   </button>
                 </div>
               </>
