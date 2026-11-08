@@ -64,6 +64,7 @@ const modKey =
 /** Pages that live under a sidebar section without having their own icon. */
 const parentSection = {
   "run-detail": "experiments",
+  "deploy-model": "experiments",
   "compare-runs": "experiments",
 };
 

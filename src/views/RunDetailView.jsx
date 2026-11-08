@@ -4,7 +4,6 @@ import { navigate, routeParams } from "../state/router.js";
 import { allRuns, loadRunScalars, loadRunHparams, updateRun } from "../state/experiments.js";
 import { currentProject, updateProject } from "../state/projects.js";
 import { ClassificationReport } from "../components/run/ClassificationReport.jsx";
-import { InferenceTab } from "../components/InferenceTab.jsx";
 import { MetricChart } from "../components/dashboard/MetricChart.jsx";
 import { EvaluationPanel } from "../components/dashboard/EvaluationPanel.jsx";
 import {
@@ -240,7 +239,6 @@ export function RunDetailView() {
   const [fileHparams, setFileHparams] = useState(null);
   const [showAllParams, setShowAllParams] = useState(false);
   const [augOpen, setAugOpen] = useState(false);
-  const [inferenceOpen, setInferenceOpen] = useState(false);
   const [hasCkpt, setHasCkpt] = useState(false);
   const [copied, setCopied] = useState(false);
   const [insightHidden, setInsightHidden] = useState(false);
@@ -285,15 +283,6 @@ export function RunDetailView() {
     }).catch(() => {});
   }, [currentProject.value?.id]);
 
-  // Close inference drawer on Escape
-  useEffect(() => {
-    if (!inferenceOpen) return;
-    function onKey(e) {
-      if (e.key === "Escape") setInferenceOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [inferenceOpen]);
 
   // If run has no scalars in IndexedDB, try loading from its JSONL file
   useEffect(() => {
@@ -469,7 +458,7 @@ export function RunDetailView() {
           <TagsInput tags={run.tags || []} runId={run.id} />
         </div>
         {run.status === "completed" && hasCkpt && (
-          <button class="dash-btn dash-btn--primary rd-deploy" onClick={() => setInferenceOpen(true)} title="Export the model and generate an inference script">
+          <button class="dash-btn dash-btn--primary rd-deploy" onClick={() => navigate("deploy-model", { runId: run.id })} title="Export the model and get code to run it">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
             </svg>
@@ -601,27 +590,6 @@ export function RunDetailView() {
         </section>
       </div>
 
-      {/* Inference Script — slide-over drawer (always mounted, visibility toggled) */}
-      <div class={`inference-drawer-overlay${inferenceOpen ? "" : " hidden"}`} onClick={() => setInferenceOpen(false)}>
-        <div class={`inference-drawer${inferenceOpen ? "" : " hidden"}`} onClick={(e) => e.stopPropagation()}>
-          <div class="inference-drawer-header">
-            <h3 class="inference-drawer-title">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.55">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              Deploy Model
-            </h3>
-            <button class="inference-drawer-close" onClick={() => setInferenceOpen(false)} title="Close (Esc)">
-              ✕
-            </button>
-          </div>
-          <div class="inference-drawer-body">
-            <InferenceTab run={run} project={currentProject.value} />
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

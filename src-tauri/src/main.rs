@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod env;
+mod exports;
 mod fs;
 mod interpretation;
 mod pty;
@@ -303,7 +304,10 @@ fn main() {
             runs::parse_hparams_yaml,
             runs::check_runs_checkpoints,
             system::get_system_metrics,
-            system::download_model,
+            exports::list_exports,
+            exports::export_model,
+            exports::save_export,
+            exports::delete_export,
             system::push_to_hub,
             interpretation::save_interpretation_image,
             interpretation::run_interpretation,

@@ -1,5 +1,6 @@
 import { CsvColumnFields } from "../components/CsvColumnFields.jsx";
 import { useState, useEffect, useRef } from "preact/hooks";
+import { signal } from "@preact/signals";
 import { invoke } from "@tauri-apps/api/core";
 import { validateTrainingProject } from "../utils/configBuilder.js";
 import { theme, toggleTheme } from "../state/theme.js";
@@ -8,7 +9,6 @@ import {
   updateProject,
   openDeleteDialog,
   addProject,
-  TASK_TYPES,
   MODEL_CATEGORIES,
   YOLOX_MODEL_CATEGORIES,
   DETECTION_MODEL_CATEGORIES,
@@ -26,46 +26,8 @@ import { projectList } from "../state/projects.js";
 import { navigate } from "../state/router.js";
 import { startTutorial } from "../state/tutorial.js";
 
-const EDITABLE_KEYS = [
-  "name",
-  "connectionType",
-  "sshCommand",
-  "projectPath",
-  "modelCategory",
-  "detectionArch",
-  "segHeadType",
-  "datasetFormat",
-  "folderPath",
-  "trainPath",
-  "valPath",
-  "testPath",
-  "numClasses",
-  "maxEpochs",
-  "learningRate",
-  "batchSize",
-  "optimizer",
-  "scheduler",
-  "weightDecay",
-  "precision",
-  "gradientClipVal",
-  "imageSize",
-  "augmentationPreset",
-  "freezeBackbone",
-  "seed",
-  "earlyStopping",
-  "earlyStoppingPatience",
-  "earlyStoppingMonitor",
-  "gpuDevices",
-  "imageFolderPath",
-  "imageColumn",
-  "labelColumn",
-  "labelColumns",
-  "accelerator",
-  "numWorkers",
-  "compileModel",
-];
+import { EDITABLE_KEYS, SETTINGS_GROUPS, SETTINGS_CATEGORIES, dirtyCategories } from "../utils/settingsCategories.js";
 
-// Read-only fields that need to be included in draft for rendering
 const READONLY_KEYS = ["taskType"];
 
 /** Tasks whose CSV datasets carry a mask column alongside the image column. */
@@ -107,29 +69,144 @@ const lockIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" st
 // Same glyph the Interpretation view uses for its drop zone.
 const imageIcon = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
 
+const SECTION_ICON_PATHS = {
+  general: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  connection: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+  dataset: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+  model: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/>',
+  hyperparameters: '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
+  input: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+  hardware: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  appearance: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  ssh: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>',
+  transfer: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/>',
+  danger: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+};
+
+function svgIcon(paths, size) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+}
+
+/** Icon for a settings category (tile in the panel header, plain in the nav). */
+function SectionIcon({ id, size = 17, tile = true }) {
+  return (
+    <span
+      class={tile ? "sv-icon" : "sv-nav-icon"}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: svgIcon(SECTION_ICON_PATHS[id] || SECTION_ICON_PATHS.general, size) }}
+    />
+  );
+}
+
+/** On/off switch for boolean settings. */
+function Toggle({ on, disabled, label, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      class={`settings-switch${on ? " on" : ""}`}
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+    >
+      <span class="settings-switch-thumb" />
+    </button>
+  );
+}
+
+/**
+ * One setting: label and hint on the left, the control on the right.
+ * `stack` puts the control under the text (wide content such as CSV columns).
+ */
+function Row({ label, hint, children, stack = false, as = "label" }) {
+  const Tag = as;
+  return (
+    <Tag class={`sv-row${stack ? " sv-row--stack" : ""}`}>
+      <span class="sv-row-text">
+        <span class="sv-row-label">{label}</span>
+        {hint && <span class="sv-row-hint">{hint}</span>}
+      </span>
+      <span class="sv-row-control">{children}</span>
+    </Tag>
+  );
+}
+
+/** Native select with the app's chevron. */
+function Select({ value, onChange, disabled, children, size = "md" }) {
+  return (
+    <span class={`sv-select sv-w-${size}`}>
+      <select class="settings-select" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+        {children}
+      </select>
+    </span>
+  );
+}
+
+/** Two-to-four option segmented control. */
+function Seg({ value, options, onChange, disabled, label }) {
+  return (
+    <span class="sv-seg sv-seg--sm" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={value === o.value}
+          class={value === o.value ? "is-active" : ""}
+          disabled={disabled}
+          onClick={() => value !== o.value && onChange(o.value)}
+        >
+          {o.icon && <span class="sv-seg-icon" dangerouslySetInnerHTML={{ __html: o.icon }} />}
+          {o.label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+const numOrEmpty = (v) => (v === "" ? "" : Number(v));
+
+function SshKeysList() {
+  const [keys, setKeys] = useState(null);
+  useEffect(() => {
+    invoke("list_ssh_keys")
+      .then((k) => setKeys(Array.isArray(k) ? k : []))
+      .catch(() => setKeys([]));
+  }, []);
+  if (keys === null) return <p class="sv-empty">Looking for keys…</p>;
+  if (keys.length === 0) return <p class="sv-empty">No SSH keys found in ~/.ssh/. Remote projects use your SSH config and agent.</p>;
+  return (
+    <div class="sv-keys">
+      {keys.map((k) => (
+        <div key={k.name} class="sv-key">
+          <span class="sv-key-icon" dangerouslySetInnerHTML={{ __html: svgIcon(SECTION_ICON_PATHS.ssh, 15) }} />
+          <span class="sv-key-text">
+            <span class="sv-key-name">{k.name}</span>
+            <span class="sv-key-fp" title={k.fingerprint}>{k.fingerprint}</span>
+          </span>
+          <span class="sv-key-type">{k.key_type}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Category shown on the right; kept across visits to the settings view. */
+const settingsCategory = signal("general");
+
 function ClearAllDataRow() {
   const [showDialog, setShowDialog] = useState(false);
-
   return (
-    <div
-      class="settings-card-row settings-row-between"
-      style="margin-top: 12px;"
-    >
-      <div>
-        <div class="settings-label">Clear all data</div>
-        <div class="settings-desc">
-          Wipe all projects, runs, and metrics from the app. This cannot be
-          undone.
-        </div>
-      </div>
-      <button class="settings-danger-btn" onClick={() => setShowDialog(true)}>
-        <span dangerouslySetInnerHTML={{ __html: trashIcon }} />
-        Clear All Data
-      </button>
-      {showDialog && (
-        <ClearAllDataDialog onClose={() => setShowDialog(false)} />
-      )}
-    </div>
+    <>
+      <Row as="div" label="Clear all data" hint="Wipes every project, run and metric from the app. Cannot be undone.">
+        <button class="settings-danger-btn" onClick={() => setShowDialog(true)}>
+          <span dangerouslySetInnerHTML={{ __html: trashIcon }} />
+          Clear all data
+        </button>
+      </Row>
+      {showDialog && <ClearAllDataDialog onClose={() => setShowDialog(false)} />}
+    </>
   );
 }
 
@@ -201,52 +278,6 @@ function ClearAllDataDialog({ onClose }) {
         </div>
       </div>
     </div>
-  );
-}
-
-function SshKeysSection() {
-  const [keys, setKeys] = useState([]);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    invoke("list_ssh_keys")
-      .then((k) => {
-        setKeys(k);
-        setLoaded(true);
-      })
-      .catch(() => setLoaded(true));
-  }, []);
-
-  if (!loaded) return null;
-
-  return (
-    <section class="settings-section">
-      <div class="settings-section-header">
-        <h2 class="settings-heading">SSH Keys</h2>
-        <p class="settings-heading-desc">
-          Detected SSH keys from ~/.ssh/
-        </p>
-      </div>
-      <div class="settings-card">
-        {keys.length === 0 ? (
-          <div class="settings-card-row">
-            <div class="settings-desc">No SSH keys found in ~/.ssh/</div>
-          </div>
-        ) : (
-          <div class="ssh-keys-list">
-            {keys.map((k) => (
-              <div key={k.name} class="ssh-key-item">
-                <div class="ssh-key-info">
-                  <span class="ssh-key-name">{k.name}</span>
-                  <span class="ssh-key-fingerprint">{k.fingerprint}</span>
-                </div>
-                <span class="ssh-key-type">{k.key_type}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
   );
 }
 
@@ -332,23 +363,12 @@ export function SettingsView() {
       </div>
     );
 
-  const [activeTab, setActiveTab] = useState("general");
   const locked = sshConnected.value;
+  const runCount = allRuns.value.filter((r) => r.projectId === proj.id).length;
   const dirty = isDirty(draft, proj);
 
   function set(key, value) {
     setDraft((d) => ({ ...d, [key]: value }));
-    setSaved(false);
-  }
-
-  function onTaskTypeChange(newTask) {
-    const formats = DATASET_FORMATS[newTask] || [];
-    const formatStillValid = formats.some((f) => f.id === draft.datasetFormat);
-    setDraft((d) => ({
-      ...d,
-      taskType: newTask,
-      datasetFormat: formatStillValid ? d.datasetFormat : "",
-    }));
     setSaved(false);
   }
 
@@ -406,1013 +426,422 @@ export function SettingsView() {
     ? `${pathBase()}${sanitizeForPath(draft.name)}`
     : pathBase();
 
+  const category = SETTINGS_CATEGORIES.find((c) => c.id === settingsCategory.value) || SETTINGS_CATEGORIES[0];
+  const dirtyCats = dirtyCategories(draft, proj);
+
+  function exportProject() {
+    const config = { ...proj };
+    // Remove internal/volatile fields
+    delete config.syncMetadata;
+    const projectRuns = allRuns.value.filter((r) => r.projectId === proj.id);
+    const json = JSON.stringify({ project: config, runs: projectRuns }, null, 2);
+    downloadFile(json, `${(proj.name || "project").replace(/\s+/g, "-")}-export.json`, "application/json");
+  }
+
+  function importProject() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const parsed = JSON.parse(await file.text());
+        // Support new format { project, runs } and legacy flat config
+        const config = parsed.project ? { ...parsed.project } : parsed;
+        const runs = Array.isArray(parsed.runs) ? parsed.runs : [];
+        // Assign new ID
+        config.id = String(Math.max(0, ...projectList.value.map((p) => Number(p.id) || 0)) + 1);
+        config.name = config.name ? `${config.name} (imported)` : "Imported Project";
+        delete config.syncMetadata;
+        await addProject(config);
+        // Import associated runs with updated projectId
+        for (const run of runs) await saveRun({ ...run, projectId: config.id });
+        if (runs.length > 0) await loadRuns();
+      } catch (err) {
+        console.error("Failed to import project:", err);
+      }
+    };
+    input.click();
+  }
+
+  const fmtLower = (draft.datasetFormat || "").toLowerCase();
+  const winPath = platform.value === "windows";
+  const isTabular = draft.datasetFormat === "CSV" || draft.datasetFormat === "JSONL";
+  const accelerator = draft.accelerator || (draft.gpuDevices ? "cuda" : "auto");
+
+  const panels = {
+    general: (
+      <>
+        <Row label="Project name">
+          <input class="settings-input sv-w-lg" type="text" value={draft.name} placeholder="My Project" disabled={locked} onInput={(e) => set("name", e.target.value)} />
+        </Row>
+        <Row label="Project folder" hint="Logs, checkpoints and exports are stored here">
+          <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.projectPath || ""} placeholder={derivedProjectPath} disabled={locked} onInput={(e) => set("projectPath", e.target.value)} />
+        </Row>
+        <Row as="div" label="Task type" hint="Set when the project was created">
+          <span class="sv-static"><span dangerouslySetInnerHTML={{ __html: lockIcon }} />{draft.taskType}</span>
+        </Row>
+        <Row as="div" label="Project ID">
+          <span class="sv-static sv-static--mono">{proj.id}</span>
+        </Row>
+      </>
+    ),
+
+    connection: (
+      <>
+        <Row as="div" label="Run training on" hint={draft.connectionType === "remote" ? "A machine reached over SSH" : "This computer"}>
+          <Seg
+            label="Run training on"
+            value={draft.connectionType || "localhost"}
+            disabled={locked}
+            options={[{ value: "localhost", label: "This machine" }, { value: "remote", label: "Remote (SSH)" }]}
+            onChange={(v) => {
+              set("connectionType", v);
+              if (v === "localhost") set("sshCommand", "localhost");
+              else if (draft.sshCommand === "localhost") set("sshCommand", "");
+            }}
+          />
+        </Row>
+        {draft.connectionType === "remote" && (
+          <Row label="SSH command" hint="How you'd connect from a terminal">
+            <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.sshCommand} placeholder="ssh user@host" disabled={locked} onInput={(e) => set("sshCommand", e.target.value)} />
+          </Row>
+        )}
+      </>
+    ),
+
+    dataset: (
+      <>
+        <Row label="Format" hint={`${datasetFormats.length} format${datasetFormats.length !== 1 ? "s" : ""} available for ${draft.taskType}`}>
+          <Select value={draft.datasetFormat || ""} disabled={locked} onChange={(v) => set("datasetFormat", v)}>
+            <option value="">Select format</option>
+            {datasetFormats.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+          </Select>
+        </Row>
+        {draft.datasetFormat && !isTabular && (
+          <Row label="Dataset folder" hint={`The ${draft.datasetFormat} dataset root`}>
+            <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.folderPath || ""} placeholder={winPath ? "C:\\path\\to\\dataset" : "/path/to/dataset"} disabled={locked} onInput={(e) => set("folderPath", e.target.value)} />
+          </Row>
+        )}
+        {isTabular && (
+          <>
+            <Row label="Train file">
+              <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.trainPath || ""} placeholder={winPath ? `C:\\path\\to\\train.${fmtLower}` : `/path/to/train.${fmtLower}`} disabled={locked} onInput={(e) => set("trainPath", e.target.value)} />
+            </Row>
+            <Row label="Validation file" hint="Optional">
+              <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.valPath || ""} placeholder={winPath ? `C:\\path\\to\\val.${fmtLower}` : `/path/to/val.${fmtLower}`} disabled={locked} onInput={(e) => set("valPath", e.target.value)} />
+            </Row>
+            <Row label="Test file">
+              <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.testPath || ""} placeholder={winPath ? `C:\\path\\to\\test.${fmtLower}` : `/path/to/test.${fmtLower}`} disabled={locked} onInput={(e) => set("testPath", e.target.value)} />
+            </Row>
+            {/* Semantic segmentation resolves this as AutoTimm's data_dir and
+                instance segmentation as its image_dir; both resolve mask paths
+                alongside images, while the other tasks have no mask column. */}
+            <Row
+              label={SEGMENTATION_TASKS.includes(draft.taskType) ? "Image / mask root" : "Image root"}
+              hint={SEGMENTATION_TASKS.includes(draft.taskType) ? "Resolves relative image and mask paths" : "Resolves relative image paths"}
+            >
+              <input class="settings-input settings-input-mono sv-w-xl" value={draft.imageFolderPath} disabled={locked} onInput={(e) => set("imageFolderPath", e.target.value)} />
+            </Row>
+          </>
+        )}
+        {draft.datasetFormat === "CSV" && (
+          <div class="sv-row sv-row--block">
+            <CsvColumnFields value={draft} onChange={set} disabled={locked} />
+          </div>
+        )}
+        {!isDetection && (
+          <Row label="Number of classes">
+            <input class="settings-input sv-w-sm" type="number" min="2" value={draft.numClasses} placeholder="e.g. 10" disabled={locked} onInput={(e) => set("numClasses", numOrEmpty(e.target.value))} />
+          </Row>
+        )}
+      </>
+    ),
+
+    model: (
+      <>
+        <Row label="Model category" hint={modelCatDesc || "Deployment target tier"}>
+          <Select value={draft.modelCategory} disabled={locked} onChange={(v) => set("modelCategory", v)}>
+            <option value="">Select category</option>
+            {Object.keys(modelCatSource).map((k) => <option key={k} value={k}>{k}</option>)}
+          </Select>
+        </Row>
+        {isDetection && (
+          <Row label="Detection architecture">
+            <Select value={draft.detectionArch} disabled={locked} onChange={(v) => set("detectionArch", v)}>
+              {DETECTION_ARCHS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </Select>
+          </Row>
+        )}
+        {isSegmentation && (
+          <Row label="Segmentation head">
+            <Select value={draft.segHeadType} disabled={locked} onChange={(v) => set("segHeadType", v)}>
+              {SEG_HEAD_TYPES.map((h) => <option key={h} value={h}>{h}</option>)}
+            </Select>
+          </Row>
+        )}
+        <Row as="div" label="Freeze backbone" hint="Keep pretrained backbone weights fixed">
+          <Toggle on={!!draft.freezeBackbone} disabled={locked} label="Freeze backbone" onChange={(v) => set("freezeBackbone", v)} />
+        </Row>
+        <Row as="div" label="Compile model" hint="Faster on CUDA; leave off for CPU and Metal">
+          <Toggle on={!!draft.compileModel} disabled={locked} label="Compile model" onChange={(v) => set("compileModel", v)} />
+        </Row>
+      </>
+    ),
+
+    hyperparameters: (
+      <>
+        <Row label="Max epochs">
+          <input class="settings-input sv-w-sm" type="number" min="1" value={draft.maxEpochs} disabled={locked} onInput={(e) => set("maxEpochs", numOrEmpty(e.target.value))} />
+        </Row>
+        <Row label="Batch size">
+          <input class="settings-input sv-w-sm" type="number" min="1" value={draft.batchSize} placeholder="auto" disabled={locked} onInput={(e) => set("batchSize", numOrEmpty(e.target.value))} />
+        </Row>
+        <Row label="Learning rate" hint="Empty uses the AutoTimm default">
+          <input class="settings-input sv-w-sm" type="number" step="any" value={draft.learningRate} placeholder="auto" disabled={locked} onInput={(e) => set("learningRate", numOrEmpty(e.target.value))} />
+        </Row>
+        <Row label="Optimizer">
+          <Select value={draft.optimizer} disabled={locked} onChange={(v) => set("optimizer", v)}>
+            <option value="">Auto (default)</option>
+            <option value="adamw">AdamW</option>
+            <option value="adam">Adam</option>
+            <option value="sgd">SGD</option>
+          </Select>
+        </Row>
+        <Row label="Scheduler">
+          <Select value={draft.scheduler} disabled={locked} onChange={(v) => set("scheduler", v)}>
+            <option value="">Auto (default)</option>
+            <option value="cosine">Cosine</option>
+            <option value="step">Step</option>
+            <option value="onecycle">OneCycle</option>
+            <option value="none">None</option>
+          </Select>
+        </Row>
+        <Row label="Weight decay" hint="L2 regularization">
+          <input class="settings-input sv-w-sm" type="number" step="any" value={draft.weightDecay} placeholder="auto" disabled={locked} onInput={(e) => set("weightDecay", numOrEmpty(e.target.value))} />
+        </Row>
+        <Row label="Gradient clip" hint="Max gradient norm">
+          <input class="settings-input sv-w-sm" type="number" step="any" value={draft.gradientClipVal} placeholder="auto" disabled={locked} onInput={(e) => set("gradientClipVal", numOrEmpty(e.target.value))} />
+        </Row>
+        <Row label="Seed" hint="Empty for a random seed">
+          <input class="settings-input sv-w-sm" type="number" min="0" value={draft.seed} placeholder="random" disabled={locked} onInput={(e) => set("seed", numOrEmpty(e.target.value))} />
+        </Row>
+        <div class="sv-subhead">Early stopping</div>
+        <Row as="div" label="Stop early" hint="Halt when the metric stops improving">
+          <Toggle on={!!draft.earlyStopping} disabled={locked} label="Early stopping" onChange={(v) => set("earlyStopping", v)} />
+        </Row>
+        {draft.earlyStopping && (
+          <>
+            <Row label="Monitor" hint={isDetection ? "Detection only logs mAP" : null}>
+              <Select value={isDetection ? "val/map" : draft.earlyStoppingMonitor} disabled={locked || isDetection} onChange={(v) => set("earlyStoppingMonitor", v)}>
+                {isDetection ? (
+                  // Detection logs no validation loss or accuracy.
+                  <option value="val/map">Validation mAP</option>
+                ) : (
+                  <>
+                    <option value="val/loss">Validation loss</option>
+                    <option value="val/accuracy">Validation accuracy</option>
+                  </>
+                )}
+              </Select>
+            </Row>
+            <Row label="Patience" hint="Epochs without improvement">
+              <input class="settings-input sv-w-sm" type="number" min="1" value={draft.earlyStoppingPatience} placeholder="10" disabled={locked} onInput={(e) => set("earlyStoppingPatience", numOrEmpty(e.target.value))} />
+            </Row>
+          </>
+        )}
+      </>
+    ),
+
+    input: (
+      <>
+        <Row label="Image size" hint="Input resolution in pixels">
+          <input class="settings-input sv-w-sm" type="number" min="1" value={draft.imageSize} placeholder="auto" disabled={locked} onInput={(e) => set("imageSize", numOrEmpty(e.target.value))} />
+        </Row>
+        <Row as="div" label="Augmentation preset" hint="Random transforms applied while training">
+          <span class="sv-inline">
+            <Select value={draft.augmentationPreset} disabled={locked} onChange={(v) => set("augmentationPreset", v)}>
+              {/* Mirrors AutoTimm's TORCHVISION_PRESETS registry, in order. */}
+              <option value="">Auto (default)</option>
+              <option value="default">Default</option>
+              <option value="autoaugment">AutoAugment</option>
+              <option value="randaugment">RandAugment</option>
+              <option value="trivialaugment">TrivialAugment</option>
+              <option value="light">Light</option>
+            </Select>
+            <button type="button" class="settings-action-btn" onClick={() => setAugPreviewOpen(true)} disabled={locked}>
+              Preview
+            </button>
+          </span>
+        </Row>
+      </>
+    ),
+
+    hardware: (
+      <>
+        <Row label="Accelerator">
+          <Select
+            value={accelerator}
+            disabled={locked}
+            onChange={(v) => { set("accelerator", v); if (v !== "cuda") set("gpuDevices", ""); }}
+          >
+            <option value="auto">Auto (training machine)</option>
+            <option value="cuda">NVIDIA CUDA</option>
+            <option value="mps">Apple Metal (MPS)</option>
+            <option value="cpu">CPU</option>
+          </Select>
+        </Row>
+        {(accelerator === "cuda" || accelerator === "auto") && (
+          <Row label="GPU devices" hint="CUDA indices, e.g. 0 or 0,1">
+            <input class="settings-input settings-input-mono sv-w-sm" type="text" value={draft.gpuDevices} placeholder="auto" disabled={locked} onInput={(e) => set("gpuDevices", e.target.value)} />
+          </Row>
+        )}
+        <Row label="Precision">
+          <Select value={draft.precision} disabled={locked} onChange={(v) => set("precision", v)}>
+            <option value="">Auto (default)</option>
+            <option value="32">32-bit (float32)</option>
+            <option value="16-mixed">16-mixed (AMP)</option>
+            <option value="bf16-mixed">bf16-mixed</option>
+          </Select>
+        </Row>
+        <Row label="Data-loader workers" hint="Empty uses the AutoTimm default">
+          <input class="settings-input sv-w-sm" type="number" min="0" value={draft.numWorkers} placeholder="auto" disabled={locked} onInput={(e) => set("numWorkers", numOrEmpty(e.target.value))} />
+        </Row>
+      </>
+    ),
+
+    appearance: (
+      <>
+        <Row as="div" label="Theme">
+          <Seg
+            label="Theme"
+            value={theme.value}
+            options={[{ value: "dark", label: "Dark", icon: moonIcon }, { value: "light", label: "Light", icon: sunIcon }]}
+            onChange={toggleTheme}
+          />
+        </Row>
+        <Row as="div" label="App tour" hint="Replay the first-run walkthrough">
+          <button type="button" class="settings-action-btn" onClick={startTutorial}>Restart tour</button>
+        </Row>
+      </>
+    ),
+
+    ssh: <SshKeysList />,
+
+    transfer: (
+      <>
+        <Row as="div" label="Export this project" hint="Settings and runs as one JSON file">
+          <button type="button" class="settings-action-btn" onClick={exportProject}>Export</button>
+        </Row>
+        <Row as="div" label="Import a project" hint="Creates a new project from an exported file">
+          <button type="button" class="settings-action-btn" onClick={importProject}>Import</button>
+        </Row>
+      </>
+    ),
+
+    danger: (
+      <>
+        <Row as="div" label="Delete this project" hint="Removes the project and its runs from NightFlow. Cannot be undone.">
+          <button class="settings-danger-btn" disabled={locked} onClick={() => openDeleteDialog(proj.id)}>
+            <span dangerouslySetInnerHTML={{ __html: trashIcon }} />
+            Delete project
+          </button>
+        </Row>
+        <ClearAllDataRow />
+      </>
+    ),
+  };
+
   return (
-    <div class="settings-view">
+    <div class="settings-view dash rd sv">
+      <header class="rd-head sv-head">
+        <div class="rd-head-main">
+          <span class="rd-eyebrow sv-eyebrow">Project settings</span>
+          <div class="rd-title">
+            <h2>{proj.name || "Untitled project"}</h2>
+          </div>
+          <div class="sv-chips">
+            <span class="sv-chip">{proj.taskType || "Classification"}</span>
+            {proj.datasetFormat && <span class="sv-chip">{proj.datasetFormat} dataset</span>}
+            <span class="sv-chip">
+              {proj.connectionType === "remote" ? (proj.sshCommand || "Remote").replace(/^ssh\s+/, "") : "Local compute"}
+            </span>
+            <span class="sv-chip">{runCount} {runCount === 1 ? "run" : "runs"}</span>
+          </div>
+        </div>
+      </header>
+
       {locked && (
-        <div class="settings-locked-banner">
-          <span dangerouslySetInnerHTML={{ __html: lockIcon }} />
-          Settings are locked while connected. Disconnect to make changes.
+        <div class="rd-insight sv-locked" role="status">
+          <span class="rd-insight-icon" dangerouslySetInnerHTML={{ __html: lockIcon }} />
+          <div>
+            <strong>Settings are locked while connected</strong>
+            <span>Disconnect from the dashboard to make changes. Saved changes trigger a fresh sync on the next connect.</span>
+          </div>
         </div>
       )}
 
-      {/* Tab navigation */}
-      <div class="settings-tabs">
-        <button
-          class={`settings-tab ${activeTab === "general" ? "settings-tab--active" : ""}`}
-          onClick={() => setActiveTab("general")}
-        >
-          General
-        </button>
-        <button
-          class={`settings-tab ${activeTab === "advanced" ? "settings-tab--active" : ""}`}
-          onClick={() => setActiveTab("advanced")}
-        >
-          Advanced Training
-        </button>
-      </div>
-
-      {/* ─── General Tab ─── */}
-      {activeTab === "general" && (
-        <>
-          {/* General */}
-          <section class="settings-section">
-            <div class="settings-section-header">
-              <h2 class="settings-heading">General</h2>
-              <p class="settings-heading-desc">
-                Basic project identity and connection
-              </p>
-            </div>
-            <div class="settings-card">
-              <div class="settings-card-row">
-                <label class="settings-field">
-                  <span class="settings-label">Project ID</span>
-                  <span class="settings-hint">
-                    Unique identifier (read-only)
-                  </span>
-                  <input
-                    class="settings-input settings-input-mono"
-                    type="text"
-                    value={proj.id}
-                    disabled
-                    readOnly
-                  />
-                </label>
-              </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row">
-                <label class="settings-field">
-                  <span class="settings-label">Project Name</span>
-                  <input
-                    class="settings-input"
-                    type="text"
-                    value={draft.name}
-                    placeholder="My Project"
-                    disabled={locked}
-                    onInput={(e) => set("name", e.target.value)}
-                  />
-                </label>
-              </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row">
-                <label class="settings-field">
-                  <span class="settings-label">Project Path</span>
-                  <input
-                    class="settings-input settings-input-mono"
-                    type="text"
-                    value={draft.projectPath || ""}
-                    placeholder={derivedProjectPath}
-                    disabled={locked}
-                    onInput={(e) => set("projectPath", e.target.value)}
-                  />
-                </label>
-              </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row settings-row-grid">
-                <label class="settings-field">
-                  <span class="settings-label">Connection Type</span>
-                  <span class="settings-hint">Where to run training</span>
-                  <div class="settings-select-wrap">
-                    <select
-                      class="settings-select"
-                      value={draft.connectionType || "localhost"}
-                      disabled={locked}
-                      onChange={(e) => {
-                        const newType = e.target.value;
-                        set("connectionType", newType);
-                        if (newType === "localhost") {
-                          set("sshCommand", "localhost");
-                        } else if (draft.sshCommand === "localhost") {
-                          set("sshCommand", "");
-                        }
-                      }}
-                    >
-                      <option value="localhost">Localhost</option>
-                      <option value="remote">Remote Instance</option>
-                    </select>
-                  </div>
-                </label>
-                <label class="settings-field">
-                  <span class="settings-label">SSH Command</span>
-                  <span class="settings-hint">
-                    {draft.connectionType === "remote"
-                      ? "Remote machine connection string"
-                      : "Set to localhost"}
-                  </span>
-                  <input
-                    class="settings-input settings-input-mono"
-                    type="text"
-                    value={draft.sshCommand}
-                    placeholder={
-                      draft.connectionType === "remote"
-                        ? "ssh user@host"
-                        : "localhost"
-                    }
-                    disabled={locked || draft.connectionType !== "remote"}
-                    onInput={(e) => set("sshCommand", e.target.value)}
-                  />
-                </label>
-              </div>
-            </div>
-          </section>
-
-          {/* Training */}
-          <section class="settings-section">
-            <div class="settings-section-header">
-              <h2 class="settings-heading">Training</h2>
-              <p class="settings-heading-desc">
-                Task configuration and model selection
-              </p>
-            </div>
-            <div class="settings-card">
-              <div class="settings-card-row settings-row-grid">
-                <label class="settings-field">
-                  <span class="settings-label">Task Type</span>
-                  <span class="settings-hint">
-                    Set at project creation (read-only)
-                  </span>
-                  <div class="settings-select-wrap">
-                    <select
-                      class="settings-select"
-                      value={draft.taskType}
-                      disabled
-                      onChange={(e) => onTaskTypeChange(e.target.value)}
-                    >
-                      {TASK_TYPES.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </select>
-                    <span class="settings-select-chevron" />
-                  </div>
-                </label>
-                <label class="settings-field">
-                  <span class="settings-label">Model Category</span>
-                  <span class="settings-hint">Deployment target tier</span>
-                  <div class="settings-select-wrap">
-                    <select
-                      class="settings-select"
-                      value={draft.modelCategory}
-                      disabled={locked}
-                      onChange={(e) => set("modelCategory", e.target.value)}
-                    >
-                      <option value="">Select category</option>
-                      {Object.keys(modelCatSource).map((k) => (
-                        <option key={k} value={k}>
-                          {k}
-                        </option>
-                      ))}
-                    </select>
-                    <span class="settings-select-chevron" />
-                  </div>
-                </label>
-              </div>
-              {modelCatDesc && (
-                <div class="settings-card-note">{modelCatDesc}</div>
-              )}
-
-              {isDetection && (
-                <>
-                  <div class="settings-card-divider" />
-                  <div class="settings-card-row">
-                    <label class="settings-field">
-                      <span class="settings-label">Detection Architecture</span>
-                      <div class="settings-select-wrap settings-select-narrow">
-                        <select
-                          class="settings-select"
-                          value={draft.detectionArch}
-                          disabled={locked}
-                          onChange={(e) => set("detectionArch", e.target.value)}
-                        >
-                          {DETECTION_ARCHS.map((a) => (
-                            <option key={a} value={a}>
-                              {a}
-                            </option>
-                          ))}
-                        </select>
-                        <span class="settings-select-chevron" />
-                      </div>
-                    </label>
-                  </div>
-                </>
-              )}
-              {isSegmentation && (
-                <>
-                  <div class="settings-card-divider" />
-                  <div class="settings-card-row">
-                    <label class="settings-field">
-                      <span class="settings-label">Segmentation Head</span>
-                      <div class="settings-select-wrap settings-select-narrow">
-                        <select
-                          class="settings-select"
-                          value={draft.segHeadType}
-                          disabled={locked}
-                          onChange={(e) => set("segHeadType", e.target.value)}
-                        >
-                          {SEG_HEAD_TYPES.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                        <span class="settings-select-chevron" />
-                      </div>
-                    </label>
-                  </div>
-                </>
-              )}
-            </div>
-          </section>
-
-          {/* Dataset */}
-          <section class="settings-section">
-            <div class="settings-section-header">
-              <h2 class="settings-heading">Dataset</h2>
-              <p class="settings-heading-desc">
-                Data format and paths for training pipeline
-              </p>
-            </div>
-            <div class="settings-card">
-              <div class="settings-card-row">
-                <label class="settings-field">
-                  <span class="settings-label">Format</span>
-                  <span class="settings-hint">
-                    {datasetFormats.length} format
-                    {datasetFormats.length !== 1 ? "s" : ""} available for{" "}
-                    {draft.taskType}
-                  </span>
-                  <div class="settings-select-wrap">
-                    <select
-                      class="settings-select"
-                      value={draft.datasetFormat || ""}
-                      disabled={locked}
-                      onChange={(e) => set("datasetFormat", e.target.value)}
-                    >
-                      <option value="">Select format</option>
-                      {datasetFormats.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.label}
-                        </option>
-                      ))}
-                    </select>
-                    <span class="settings-select-chevron" />
-                  </div>
-                </label>
-              </div>
-
-              {draft.datasetFormat &&
-                draft.datasetFormat !== "CSV" &&
-                draft.datasetFormat !== "JSONL" && (
-                  <>
-                    <div class="settings-card-divider" />
-                    <div class="settings-card-row">
-                      <label class="settings-field">
-                        <span class="settings-label">Dataset Folder Path</span>
-                        <span class="settings-hint">
-                          Path to {draft.datasetFormat} dataset folder
-                        </span>
-                        <input
-                          class="settings-input settings-input-mono"
-                          type="text"
-                          value={draft.folderPath || ""}
-                          placeholder={platform.value === "windows" ? "C:\\path\\to\\dataset" : "/path/to/dataset"}
-                          disabled={locked}
-                          onInput={(e) => set("folderPath", e.target.value)}
-                        />
-                      </label>
-                    </div>
-                  </>
-                )}
-
-              {(draft.datasetFormat === "CSV" ||
-                draft.datasetFormat === "JSONL") && (
-                  <>
-                    <div class="settings-card-divider" />
-                    <div class="settings-card-row">
-                      <label class="settings-field">
-                        <span class="settings-label">Train Path</span>
-                        <span class="settings-hint">
-                          Path to training data file
-                        </span>
-                        <input
-                          class="settings-input settings-input-mono"
-                          type="text"
-                          value={draft.trainPath || ""}
-                          placeholder={platform.value === "windows" ? `C:\\path\\to\\train.${draft.datasetFormat.toLowerCase()}` : `/path/to/train.${draft.datasetFormat.toLowerCase()}`}
-                          disabled={locked}
-                          onInput={(e) => set("trainPath", e.target.value)}
-                        />
-                      </label>
-                    </div>
-                    <div class="settings-card-divider" />
-                    <div class="settings-card-row">
-                      <label class="settings-field">
-                        <span class="settings-label">Val Path</span>
-                        <span class="settings-hint">
-                          Path to validation data file (optional)
-                        </span>
-                        <input
-                          class="settings-input settings-input-mono"
-                          type="text"
-                          value={draft.valPath || ""}
-                          placeholder={platform.value === "windows" ? `C:\\path\\to\\val.${draft.datasetFormat.toLowerCase()}` : `/path/to/val.${draft.datasetFormat.toLowerCase()}`}
-                          disabled={locked}
-                          onInput={(e) => set("valPath", e.target.value)}
-                        />
-                      </label>
-                    </div>
-                    <div class="settings-card-divider" />
-                    <div class="settings-card-row">
-                      <label class="settings-field">
-                        <span class="settings-label">Test Path</span>
-                        <span class="settings-hint">Path to test data file</span>
-                        <input
-                          class="settings-input settings-input-mono"
-                          type="text"
-                          value={draft.testPath || ""}
-                          placeholder={platform.value === "windows" ? `C:\\path\\to\\test.${draft.datasetFormat.toLowerCase()}` : `/path/to/test.${draft.datasetFormat.toLowerCase()}`}
-                          disabled={locked}
-                          onInput={(e) => set("testPath", e.target.value)}
-                        />
-                      </label>
-                    </div>
-                  </>
-                )}
-
-              {draft.datasetFormat === "CSV" && <div class="settings-card-row"><CsvColumnFields value={draft} onChange={set} disabled={locked} /></div>}
-
-              {(draft.datasetFormat === "CSV" || draft.datasetFormat === "JSONL") && (
-                <>
-                  <div class="settings-card-divider" />
-                  <div class="settings-card-row">
-                    <label class="settings-field">
-                      {/* Semantic segmentation resolves this as AutoTimm's data_dir and
-                          instance segmentation as its image_dir; both resolve mask paths
-                          alongside images, while the other tasks have no mask column. */}
-                      <span class="settings-label">
-                        {SEGMENTATION_TASKS.includes(draft.taskType)
-                          ? "Image / mask root directory"
-                          : "Image root directory"}
-                      </span>
-                      <span class="settings-hint">
-                        {SEGMENTATION_TASKS.includes(draft.taskType)
-                          ? "Directory used to resolve relative image and mask paths in the dataset."
-                          : "Directory used to resolve relative image paths in the dataset."}
-                      </span>
-                      <input class="settings-input" value={draft.imageFolderPath} disabled={locked} onInput={(e) => set("imageFolderPath", e.target.value)} />
-                    </label>
-                  </div>
-                </>
-              )}
-
-              {!isDetection && <div class="settings-card-divider" />}
-              {!isDetection && <div class="settings-card-row">
-                <label class="settings-field">
-                  <span class="settings-label">Number of Classes</span>
-                  <span class="settings-hint">
-                    Target classes in your dataset
-                  </span>
-                  <input
-                    class="settings-input"
-                    type="number"
-                    min="2"
-                    value={draft.numClasses}
-                    placeholder="e.g. 10"
-                    disabled={locked}
-                    onInput={(e) =>
-                      set(
-                        "numClasses",
-                        e.target.value === "" ? "" : Number(e.target.value),
-                      )
-                    }
-                  />
-                </label>
-              </div>}
-            </div>
-          </section>
-
-          {/* SSH Keys */}
-          <SshKeysSection />
-
-          {/* Appearance */}
-          <section class="settings-section">
-            <div class="settings-section-header">
-              <h2 class="settings-heading">Appearance</h2>
-              <p class="settings-heading-desc">Visual preferences</p>
-            </div>
-            <div class="settings-card">
-              <div class="settings-card-row settings-row-between">
-                <div>
-                  <div class="settings-label">Theme</div>
-                  <div class="settings-desc">
-                    Switch between dark and light mode
-                  </div>
-                </div>
-                <button class="settings-theme-btn" onClick={toggleTheme}>
-                  <span
-                    class="settings-theme-icon"
-                    dangerouslySetInnerHTML={{
-                      __html: theme.value === "dark" ? sunIcon : moonIcon,
-                    }}
-                  />
-                  {theme.value === "dark" ? "Dark" : "Light"}
-                </button>
-              </div>
-            </div>
-          </section>
-
-          {/* Tutorial */}
-          <section class="settings-section">
-            <div class="settings-section-header">
-              <h2 class="settings-heading">App Tour</h2>
-              <p class="settings-heading-desc">
-                Replay the first-time tutorial walkthrough
-              </p>
-            </div>
-            <div class="settings-card">
-              <div class="settings-card-row settings-row-between">
-                <div>
-                  <div class="settings-label">Restart Tutorial</div>
-                  <div class="settings-desc">
-                    Walk through the UI highlights again
-                  </div>
-                </div>
+      <div class="sv-layout">
+        <nav class="sv-nav" aria-label="Settings categories">
+          {SETTINGS_GROUPS.map((g) => (
+            <div key={g.label} class="sv-nav-group">
+              <div class="sv-nav-label">{g.label}</div>
+              {g.items.map((c) => (
                 <button
-                  class="tutorial-restart-btn"
-                  onClick={startTutorial}
+                  key={c.id}
+                  type="button"
+                  class={`sv-nav-item${c.id === category.id ? " is-active" : ""}${c.danger ? " is-danger" : ""}`}
+                  aria-current={c.id === category.id ? "page" : undefined}
+                  onClick={() => (settingsCategory.value = c.id)}
                 >
-                  Restart Tour
+                  <SectionIcon id={c.id} size={15} tile={false} />
+                  <span class="sv-nav-text">{c.label}</span>
+                  {dirtyCats.has(c.id) && <span class="sv-nav-dot" title="Unsaved changes" />}
                 </button>
-              </div>
+              ))}
             </div>
-          </section>
+          ))}
+        </nav>
 
-          {/* Project Import / Export */}
-          <section class="settings-section">
-            <div class="settings-section-header">
-              <h2 class="settings-heading">Project Config</h2>
-              <p class="settings-heading-desc">
-                Export or import project configuration and runs as a JSON file
-              </p>
+        <div class="sv-main">
+        <section class={`sv-panel${category.danger ? " is-danger" : ""}`} aria-labelledby="sv-panel-title">
+          <header class="sv-panel-head">
+            <SectionIcon id={category.id} />
+            <div>
+              <h2 id="sv-panel-title">{category.label}</h2>
+              <p>{category.desc}</p>
             </div>
-            <div class="settings-card">
-              <div class="settings-card-row settings-row-between">
-                <div>
-                  <div class="settings-label">Export Project</div>
-                  <div class="settings-desc">
-                    Download this project's settings and runs as a portable JSON file
-                  </div>
-                </div>
-                <button
-                  class="settings-action-btn"
-                  onClick={() => {
-                    const config = { ...proj };
-                    // Remove internal/volatile fields
-                    delete config.syncMetadata;
-                    const projectRuns = allRuns.value.filter(
-                      (r) => r.projectId === proj.id,
-                    );
-                    const exportPayload = {
-                      project: config,
-                      runs: projectRuns,
-                    };
-                    const json = JSON.stringify(exportPayload, null, 2);
-                    downloadFile(
-                      json,
-                      `${(proj.name || "project").replace(/\s+/g, "-")}-export.json`,
-                      "application/json",
-                    );
-                  }}
-                >
-                  Export
-                </button>
+          </header>
+          <div class="sv-rows">{panels[category.id]}</div>
+        </section>
+          {/* Save bar */}
+          <div class={`settings-save-bar ${dirty || saved ? "visible" : ""}`}>
+            {saved ? (
+              <div class="settings-saved-msg">
+                <span dangerouslySetInnerHTML={{ __html: checkIcon }} />
+                Changes saved · the project will sync again when you connect
               </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row settings-row-between">
-                <div>
-                  <div class="settings-label">Import Project</div>
-                  <div class="settings-desc">
-                    Create a new project from an exported JSON file (config + runs)
-                  </div>
-                </div>
-                <button
-                  class="settings-action-btn"
-                  onClick={() => {
-                    const input = document.createElement("input");
-                    input.type = "file";
-                    input.accept = ".json";
-                    input.onchange = async (e) => {
-                      const file = e.target.files[0];
-                      if (!file) return;
-                      try {
-                        const text = await file.text();
-                        const parsed = JSON.parse(text);
-                        // Support new format { project, runs } and legacy flat config
-                        const config = parsed.project ? { ...parsed.project } : parsed;
-                        const runs = Array.isArray(parsed.runs) ? parsed.runs : [];
-                        // Assign new ID
-                        config.id = String(
-                          Math.max(0, ...projectList.value.map((p) => Number(p.id) || 0)) + 1,
-                        );
-                        config.name = config.name
-                          ? `${config.name} (imported)`
-                          : "Imported Project";
-                        delete config.syncMetadata;
-                        await addProject(config);
-                        // Import associated runs with updated projectId
-                        for (const run of runs) {
-                          await saveRun({ ...run, projectId: config.id });
-                        }
-                        if (runs.length > 0) await loadRuns();
-                      } catch (err) {
-                        console.error("Failed to import project:", err);
-                      }
-                    };
-                    input.click();
-                  }}
-                >
-                  Import
-                </button>
-              </div>
-            </div>
-          </section>
-
-          {/* Danger Zone */}
-          <section class="settings-section">
-            <div class="settings-danger">
-              <div class="settings-danger-header">
-                <h2 class="settings-heading">Danger Zone</h2>
-              </div>
-              <div class="settings-card-row settings-row-between">
-                <div>
-                  <div class="settings-label">Delete this project</div>
-                  <div class="settings-desc">
-                    Once deleted, this project and all associated data cannot be
-                    recovered.
-                  </div>
-                </div>
-                <button
-                  class="settings-danger-btn"
-                  disabled={locked}
-                  onClick={() => openDeleteDialog(proj.id)}
-                >
-                  <span dangerouslySetInnerHTML={{ __html: trashIcon }} />
-                  Delete Project
-                </button>
-              </div>
-              <ClearAllDataRow />
-            </div>
-          </section>
-
-        </>
-      )}
-
-      {/* ─── Advanced Training Tab ─── */}
-      {activeTab === "advanced" && (
-        <>
-          <section class="settings-section">
-            <div class="settings-section-header">
-              <h2 class="settings-heading">Training Basics</h2>
-              <p class="settings-heading-desc">
-                Core hyperparameters for the training loop
-              </p>
-            </div>
-            <div class="settings-card">
-              <div class="settings-card-row settings-row-grid">
-                <label class="settings-field">
-                  <span class="settings-label">Max Epochs</span>
-                  <span class="settings-hint">Number of training epochs</span>
-                  <input
-                    class="settings-input"
-                    type="number"
-                    min="1"
-                    value={draft.maxEpochs}
-                    disabled={locked}
-                    onInput={(e) =>
-                      set(
-                        "maxEpochs",
-                        e.target.value === "" ? "" : Number(e.target.value),
-                      )
-                    }
-                  />
-                </label>
-                <label class="settings-field">
-                  <span class="settings-label">Learning Rate</span>
-                  <span class="settings-hint">
-                    Leave empty for AutoTimm default
-                  </span>
-                  <input
-                    class="settings-input"
-                    type="number"
-                    step="any"
-                    value={draft.learningRate}
-                    placeholder="auto"
-                    disabled={locked}
-                    onInput={(e) =>
-                      set(
-                        "learningRate",
-                        e.target.value === "" ? "" : Number(e.target.value),
-                      )
-                    }
-                  />
-                </label>
-                <label class="settings-field">
-                  <span class="settings-label">Batch Size</span>
-                  <span class="settings-hint">Samples per training step</span>
-                  <input
-                    class="settings-input"
-                    type="number"
-                    min="1"
-                    value={draft.batchSize}
-                    placeholder="auto"
-                    disabled={locked}
-                    onInput={(e) =>
-                      set(
-                        "batchSize",
-                        e.target.value === "" ? "" : Number(e.target.value),
-                      )
-                    }
-                  />
-                </label>
-              </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row settings-row-grid">
-                <label class="settings-field">
-                  <span class="settings-label">Weight Decay</span>
-                  <span class="settings-hint">L2 regularization factor</span>
-                  <input
-                    class="settings-input"
-                    type="number"
-                    step="any"
-                    value={draft.weightDecay}
-                    placeholder="auto"
-                    disabled={locked}
-                    onInput={(e) =>
-                      set(
-                        "weightDecay",
-                        e.target.value === "" ? "" : Number(e.target.value),
-                      )
-                    }
-                  />
-                </label>
-              </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row settings-row-grid">
-                <label class="settings-field">
-                  <span class="settings-label">Optimizer</span>
-                  <span class="settings-hint">Optimization algorithm</span>
-                  <div class="settings-select-wrap">
-                    <select
-                      class="settings-select"
-                      value={draft.optimizer}
-                      disabled={locked}
-                      onChange={(e) => set("optimizer", e.target.value)}
-                    >
-                      <option value="">Auto (default)</option>
-                      <option value="adamw">AdamW</option>
-                      <option value="adam">Adam</option>
-                      <option value="sgd">SGD</option>
-                    </select>
-                    <span class="settings-select-chevron" />
-                  </div>
-                </label>
-                <label class="settings-field">
-                  <span class="settings-label">Scheduler</span>
-                  <span class="settings-hint">Learning rate schedule</span>
-                  <div class="settings-select-wrap">
-                    <select
-                      class="settings-select"
-                      value={draft.scheduler}
-                      disabled={locked}
-                      onChange={(e) => set("scheduler", e.target.value)}
-                    >
-                      <option value="">Auto (default)</option>
-                      <option value="cosine">Cosine</option>
-                      <option value="step">Step</option>
-                      <option value="onecycle">OneCycle</option>
-                      <option value="none">None</option>
-                    </select>
-                    <span class="settings-select-chevron" />
-                  </div>
-                </label>
-              </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row settings-row-between">
-                <div>
-                  <div class="settings-label">Early Stopping</div>
-                  <div class="settings-desc">
-                    Halt training after patience epochs with no improvement
-                  </div>
-                </div>
-                <button
-                  class="settings-theme-btn"
-                  disabled={locked}
-                  onClick={() => set("earlyStopping", !draft.earlyStopping)}
-                >
-                  {draft.earlyStopping ? "On" : "Off"}
-                </button>
-              </div>
-              {draft.earlyStopping && (
-                <>
-                  <div class="settings-card-divider" />
-                  <div class="settings-card-row settings-row-grid">
-                    <label class="settings-field">
-                      <span class="settings-label">Monitor Metric</span>
-                      <span class="settings-hint">
-                        Metric to watch for improvement
-                      </span>
-                      <div class="settings-select-wrap">
-                        <select
-                          class="settings-select"
-                          value={isDetection ? "val/map" : draft.earlyStoppingMonitor}
-                          disabled={locked || isDetection}
-                          onChange={(e) =>
-                            set("earlyStoppingMonitor", e.target.value)
-                          }
-                        >
-                          {isDetection ? (
-                            // Detection logs no validation loss or accuracy.
-                            <option value="val/map">Validation mAP</option>
-                          ) : (
-                            <>
-                              <option value="val/loss">Validation Loss</option>
-                              <option value="val/accuracy">
-                                Validation Accuracy
-                              </option>
-                            </>
-                          )}
-                        </select>
-                        <span class="settings-select-chevron" />
-                      </div>
-                    </label>
-                    <label class="settings-field">
-                      <span class="settings-label">Patience</span>
-                      <span class="settings-hint">
-                        Epochs to wait before stopping (default 10)
-                      </span>
-                      <input
-                        class="settings-input"
-                        type="number"
-                        min="1"
-                        value={draft.earlyStoppingPatience}
-                        placeholder="10"
-                        disabled={locked}
-                        onInput={(e) =>
-                          set(
-                            "earlyStoppingPatience",
-                            e.target.value === "" ? "" : Number(e.target.value),
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
-                </>
-              )}
-            </div>
-          </section>
-
-          <section class="settings-section">
-            <div class="settings-section-header">
-              <h2 class="settings-heading">Precision & Data</h2>
-              <p class="settings-heading-desc">
-                Mixed precision, image size, and augmentation
-              </p>
-            </div>
-            <div class="settings-card">
-              <div class="settings-card-row settings-row-grid">
-                <label class="settings-field">
-                  <span class="settings-label">Precision</span>
-                  <span class="settings-hint">Floating-point precision</span>
-                  <div class="settings-select-wrap">
-                    <select
-                      class="settings-select"
-                      value={draft.precision}
-                      disabled={locked}
-                      onChange={(e) => set("precision", e.target.value)}
-                    >
-                      <option value="">Auto (default)</option>
-                      <option value="32">32-bit (float32)</option>
-                      <option value="16-mixed">16-mixed (AMP)</option>
-                      <option value="bf16-mixed">bf16-mixed</option>
-                    </select>
-                    <span class="settings-select-chevron" />
-                  </div>
-                </label>
-                <label class="settings-field">
-                  <span class="settings-label">Image Size</span>
-                  <span class="settings-hint">Input resolution (px)</span>
-                  <input
-                    class="settings-input"
-                    type="number"
-                    min="1"
-                    value={draft.imageSize}
-                    placeholder="auto"
-                    disabled={locked}
-                    onInput={(e) =>
-                      set(
-                        "imageSize",
-                        e.target.value === "" ? "" : Number(e.target.value),
-                      )
-                    }
-                  />
-                </label>
-              </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row settings-row-grid">
-                <label class="settings-field">
-                  <span class="settings-label">Augmentation Preset</span>
-                  <span class="settings-hint">Data augmentation strategy</span>
-                  <div class="settings-select-wrap">
-                    <select
-                      class="settings-select"
-                      value={draft.augmentationPreset}
-                      disabled={locked}
-                      onChange={(e) =>
-                        set("augmentationPreset", e.target.value)
-                      }
-                    >
-                      {/* Mirrors AutoTimm's TORCHVISION_PRESETS registry, in order. */}
-                      <option value="">Auto (default)</option>
-                      <option value="default">Default</option>
-                      <option value="autoaugment">AutoAugment</option>
-                      <option value="randaugment">RandAugment</option>
-                      <option value="trivialaugment">TrivialAugment</option>
-                      <option value="light">Light</option>
-                    </select>
-                    <span class="settings-select-chevron" />
-                  </div>
-                  <button
-                    type="button"
-                    class="settings-action-btn"
-                    style="margin-top:6px"
-                    onClick={() => setAugPreviewOpen(true)}
-                    disabled={locked}
-                  >
-                    Preview
+            ) : (
+              <>
+                <span class="settings-save-hint">You have unsaved changes</span>
+                <div class="settings-save-actions">
+                  <button class="settings-discard-btn" onClick={handleDiscard}>
+                    Discard
                   </button>
-                </label>
-                <label class="settings-field">
-                  <span class="settings-label">Gradient Clip</span>
-                  <span class="settings-hint">Max gradient norm</span>
-                  <input
-                    class="settings-input"
-                    type="number"
-                    step="any"
-                    value={draft.gradientClipVal}
-                    placeholder="auto"
+                  <button
+                    class="settings-save-btn"
                     disabled={locked}
-                    onInput={(e) =>
-                      set(
-                        "gradientClipVal",
-                        e.target.value === "" ? "" : Number(e.target.value),
-                      )
-                    }
-                  />
-                </label>
-              </div>
-            </div>
-          </section>
-
-          <section class="settings-section">
-            <div class="settings-section-header">
-              <h2 class="settings-heading">Advanced</h2>
-              <p class="settings-heading-desc">
-                Backbone freezing and reproducibility
-              </p>
-            </div>
-            <div class="settings-card">
-              <div class="settings-card-row settings-row-between">
-                <div>
-                  <div class="settings-label">Freeze Backbone</div>
-                  <div class="settings-desc">
-                    Freeze pretrained backbone weights during training
-                  </div>
+                    onClick={handleSave}
+                  >
+                    Save Changes
+                  </button>
                 </div>
-                <button
-                  class="settings-theme-btn"
-                  disabled={locked}
-                  onClick={() => set("freezeBackbone", !draft.freezeBackbone)}
-                >
-                  {draft.freezeBackbone ? "On" : "Off"}
-                </button>
-              </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row">
-                <label class="settings-field">
-                  <span class="settings-label">Seed</span>
-                  <span class="settings-hint">
-                    Random seed for reproducibility (leave empty for random)
-                  </span>
-                  <input
-                    class="settings-input"
-                    type="number"
-                    min="0"
-                    value={draft.seed}
-                    placeholder="random"
-                    disabled={locked}
-                    onInput={(e) =>
-                      set(
-                        "seed",
-                        e.target.value === "" ? "" : Number(e.target.value),
-                      )
-                    }
-                  />
-                </label>
-              </div>
-              <div class="settings-card-divider" />
-              <div class="settings-card-row">
-                <label class="settings-field">
-                  <span class="settings-label">Accelerator</span>
-                  <div class="settings-select-wrap">
-                    <select class="settings-select" value={draft.accelerator || (draft.gpuDevices ? "cuda" : "auto")} disabled={locked}
-                      onChange={(e) => { set("accelerator", e.target.value); if (e.target.value !== "cuda") set("gpuDevices", ""); }}>
-                      <option value="auto">Auto (training machine)</option>
-                      <option value="cuda">NVIDIA CUDA</option>
-                      <option value="mps">Apple Metal (MPS)</option>
-                      <option value="cpu">CPU (Intel, AMD, Apple silicon)</option>
-                    </select>
-                    <span class="settings-select-chevron" />
-                  </div>
-                </label>
-              </div>
-              <div class="settings-card-row">
-                <label class="settings-field">
-                  <span class="settings-label">Data-loader workers</span>
-                  <input class="settings-input" type="number" min="0" value={draft.numWorkers} placeholder="AutoTimm default" disabled={locked}
-                    onInput={(e) => set("numWorkers", e.target.value === "" ? "" : Number(e.target.value))} />
-                </label>
-              </div>
-              <div class="settings-card-row settings-row-between">
-                <div><div class="settings-label">Compile model</div><div class="settings-desc">Optional optimization; leave off for portable CPU and Metal execution.</div></div>
-                <button class="settings-theme-btn" disabled={locked} onClick={() => set("compileModel", !draft.compileModel)}>{draft.compileModel ? "On" : "Off"}</button>
-              </div>
-              <div class="settings-card-row">
-                <label class="settings-field">
-                  <span class="settings-label">GPU Devices</span>
-                  <span class="settings-hint">
-                    CUDA device indices, e.g. 0 or 0,1. Clear for CPU, Metal, or Auto.
-                  </span>
-                  <input
-                    class="settings-input"
-                    type="text"
-                    value={draft.gpuDevices}
-                    placeholder="auto"
-                    disabled={locked}
-                    onInput={(e) => set("gpuDevices", e.target.value)}
-                  />
-                </label>
-              </div>
-            </div>
-          </section>
-        </>
-      )}
-
-      {/* Save bar */}
-      <div class={`settings-save-bar ${dirty || saved ? "visible" : ""}`}>
-        {saved ? (
-          <div class="settings-saved-msg">
-            <span dangerouslySetInnerHTML={{ __html: checkIcon }} />
-            Changes saved · the project will sync again when you connect
+              </>
+            )}
           </div>
-        ) : (
-          <>
-            <span class="settings-save-hint">You have unsaved changes</span>
-            <div class="settings-save-actions">
-              <button class="settings-discard-btn" onClick={handleDiscard}>
-                Discard
-              </button>
-              <button
-                class="settings-save-btn"
-                disabled={locked}
-                onClick={handleSave}
-              >
-                Save Changes
-              </button>
-            </div>
-          </>
-        )}
+        </div>
       </div>
-
       <DeleteProjectDialog />
 
       {augPreviewOpen && (
