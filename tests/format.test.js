@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatRelativeTime, formatDuration, formatPercent } from '../src/utils/format.js';
+import { formatRelativeTime, formatDuration, formatPercent, formatBytes } from '../src/utils/format.js';
 const now = Date.parse('2026-01-10T12:00:00Z');
 test('relative time buckets', () => {
   assert.equal(formatRelativeTime(null, now), '—');
@@ -19,4 +19,12 @@ test('duration formatting', () => {
 test('percent formatting', () => {
   assert.equal(formatPercent(null), '—');
   assert.equal(formatPercent(0.92), '92.0%');
+});
+test('byte formatting', () => {
+  assert.equal(formatBytes(undefined), '—');
+  assert.equal(formatBytes(812), '812 B');
+  assert.equal(formatBytes(4300), '4.20 KB');
+  assert.equal(formatBytes(21.3 * 1024 * 1024), '21.3 MB');
+  assert.equal(formatBytes(143 * 1024 * 1024), '143 MB');
+  assert.equal(formatBytes(1.07 * 1024 ** 3), '1.07 GB');
 });

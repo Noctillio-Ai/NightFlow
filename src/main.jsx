@@ -9,6 +9,9 @@ import "./compare-runs.css";
 import "./runs.css";
 import "./interpretation.css";
 import "./netron-view.css";
+import "./deploy.css";
+import "./settings.css";
+import "./polish.css";
 import "@xterm/xterm/css/xterm.css";
 
 render(<App />, document.getElementById("app"));

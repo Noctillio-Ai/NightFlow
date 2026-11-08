@@ -1,4 +1,4 @@
-import { signal, computed } from "@preact/signals";
+import { signal, computed, effect } from "@preact/signals";
 import {
   getAllProjects,
   saveProject,
@@ -10,6 +10,23 @@ import { restoreSyncState, platform, cleanupProjectState } from "./dashboard.js"
 
 export const projectList = signal([]);
 export const currentProjectId = signal(null);
+
+// The active project survives restarts (localStorage; JSON keeps the id's type).
+const LAST_PROJECT_KEY = "nightflow-last-project";
+function readLastProjectId() {
+  try {
+    return JSON.parse(localStorage.getItem(LAST_PROJECT_KEY));
+  } catch {
+    return null;
+  }
+}
+effect(() => {
+  const id = currentProjectId.value;
+  if (id == null) return;
+  try {
+    localStorage.setItem(LAST_PROJECT_KEY, JSON.stringify(id));
+  } catch { /* storage unavailable */ }
+});
 
 // Load projects from database on initialization
 export async function loadProjects() {
@@ -92,8 +109,11 @@ export async function loadProjects() {
     });
     projectList.value = updatedProjects;
     if (updatedProjects.length > 0 && !currentProjectId.value) {
-      currentProjectId.value = updatedProjects[0].id;
-      restoreSyncState(updatedProjects[0].id);
+      // Reopen the project that was active when the app last closed.
+      const lastId = readLastProjectId();
+      const start = updatedProjects.find((p) => p.id === lastId) || updatedProjects[0];
+      currentProjectId.value = start.id;
+      restoreSyncState(start.id);
     }
   } catch (error) {
     console.error("Failed to load projects:", error);

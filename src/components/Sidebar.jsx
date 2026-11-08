@@ -9,6 +9,7 @@ import {
   openDeleteDialog,
 } from "../state/projects.js";
 import { isPageAvailable } from "../state/dashboard.js";
+import { pageTone } from "../utils/pageTones.js";
 import { aboutOpen } from "../app.jsx";
 
 const navItems = [
@@ -64,6 +65,7 @@ const modKey =
 /** Pages that live under a sidebar section without having their own icon. */
 const parentSection = {
   "run-detail": "experiments",
+  "deploy-model": "experiments",
   "compare-runs": "experiments",
 };
 
@@ -100,6 +102,7 @@ export function Sidebar() {
           <button
             key={item.id}
             class={`sidebar-btn${activeSection === item.id ? " active" : ""}`}
+            style={{ "--app-tone": pageTone(item.id) }}
             onClick={() => navigate(item.id)}
             aria-label={item.label}
             aria-current={activeSection === item.id ? "page" : undefined}

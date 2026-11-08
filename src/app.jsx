@@ -1,11 +1,13 @@
 import { useEffect } from "preact/hooks";
-import { signal } from "@preact/signals";
+import { signal, effect } from "@preact/signals";
 import { invoke } from "@tauri-apps/api/core";
-import { currentPage, navigate } from "./state/router.js";
+import { currentPage, routeParams, navigate } from "./state/router.js";
 import { isPageAvailable } from "./state/dashboard.js";
-import { projectList, loadProjects } from "./state/projects.js";
+import { createRouteMemory } from "./state/routeMemory.js";
+import { projectList, loadProjects, currentProjectId } from "./state/projects.js";
 import { loadRuns } from "./state/experiments.js";
 import { Sidebar } from "./components/Sidebar.jsx";
+import { pageTone } from "./utils/pageTones.js";
 import { Header } from "./components/Header.jsx";
 import { DashboardView } from "./views/DashboardView.jsx";
 import { ExperimentsView } from "./views/ExperimentsView.jsx";
@@ -14,6 +16,7 @@ import { NetronView } from "./views/NetronView.jsx";
 import { InterpretationView } from "./views/InterpretationView.jsx";
 import { TerminalView } from "./views/TerminalView.jsx";
 import { RunDetailView } from "./views/RunDetailView.jsx";
+import { DeployModelView } from "./views/DeployModelView.jsx";
 import { CompareRunsView } from "./views/CompareRunsView.jsx";
 import { DatasetBrowserView } from "./views/DatasetBrowserView.jsx";
 import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal.jsx";
@@ -34,6 +37,52 @@ import { TutorialOverlay } from "./components/TutorialOverlay.jsx";
 import { maybeStartTutorial } from "./state/tutorial.js";
 
 export const shortcutsOpen = signal(false);
+
+// ── Per-project navigation ──
+// Each project remembers the last view chosen there; switching away and back
+// returns to it. A view the project can't reach right now (not connected or
+// not synced — mirrors the sidebar) shows the dashboard without forgetting the
+// view, which comes back as soon as it's reachable. Survives restarts via
+// localStorage. See state/routeMemory.js.
+const ROUTES_KEY = "nightflow-project-routes";
+function loadSavedRoutes() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ROUTES_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+const routeMemory = createRouteMemory({
+  isAvailable: isPageAvailable,
+  navigate,
+  runScoped: new Set(["run-detail", "deploy-model", "compare-runs"]),
+  initial: loadSavedRoutes(),
+  onChange: (entries) => {
+    try {
+      localStorage.setItem(ROUTES_KEY, JSON.stringify(entries));
+    } catch { /* storage unavailable: memory still works for this session */ }
+  },
+});
+effect(() => {
+  // Reads the connection signals through isPageAvailable, so it re-runs on
+  // connect/disconnect/sync too.
+  routeMemory.update(currentProjectId.value, currentPage.value, routeParams.value);
+});
+// Forget deleted projects (only once the list has loaded).
+effect(() => {
+  const list = projectList.value;
+  if (!list.length) return;
+  const ids = new Set(list.map((p) => p.id));
+  for (const id of [...routeMemory.remembered.keys()]) if (!ids.has(id)) routeMemory.forget(id);
+});
+
+// The page accent lives on the root so dialogs rendered outside the shell
+// pick it up too (see polish.css).
+effect(() => {
+  document.documentElement.style.setProperty("--app-tone", pageTone(currentPage.value));
+});
+
 export const aboutOpen = signal(false);
 
 function CurrentView() {
@@ -52,6 +101,8 @@ function CurrentView() {
       return <SettingsView />;
     case "run-detail":
       return <RunDetailView />;
+    case "deploy-model":
+      return <DeployModelView />;
     case "compare-runs":
       return <CompareRunsView />;
     case "dataset-browser":
@@ -141,12 +192,14 @@ export function App() {
       {!hasProjects ? (
         <EmptyProjectsScreen />
       ) : (
-        <div class="app-shell">
+        <div class="app-shell" data-page={currentPage.value}>
           <Sidebar />
           <div class="app-main">
             <Header />
             <div class="app-content">
-              <CurrentView />
+              <div class="app-view" key={currentPage.value}>
+                <CurrentView />
+              </div>
             </div>
           </div>
         </div>

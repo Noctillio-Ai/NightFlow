@@ -28,3 +28,14 @@ export function formatDuration(start, end) {
 export function formatPercent(value) {
   return value != null ? `${(value * 100).toFixed(1)}%` : "—";
 }
+
+/** Byte count as "812 B", "4.20 KB", "21.3 MB", "143 MB", "1.07 GB". */
+export function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = bytes / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v >= 100 ? v.toFixed(0) : v.toFixed(v >= 10 ? 1 : 2)} ${units[i]}`;
+}

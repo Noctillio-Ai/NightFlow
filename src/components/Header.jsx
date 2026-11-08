@@ -28,6 +28,7 @@ const titles = {
   terminal: "Terminal",
   settings: "Project Settings",
   "run-detail": "Run Detail",
+  "deploy-model": "Deploy Model",
   "compare-runs": "Compare Runs",
 };
 
@@ -40,11 +41,17 @@ function breadcrumbLeaf() {
     const run = allRuns.value.find((r) => r.id === routeParams.value.runId);
     return run ? run.name || run.id : "Run";
   }
+  if (page === "deploy-model") return "Deploy model";
   if (page === "compare-runs") {
     const n = routeParams.value.runIds?.length || 0;
     return `Compare ${n} runs`;
   }
   return null;
+}
+
+function deployRunLabel() {
+  const run = allRuns.value.find((r) => r.id === routeParams.value.runId);
+  return run ? run.name || run.id : "Run";
 }
 
 const chevronSep = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>`;
@@ -122,6 +129,14 @@ export function Header() {
               Experiments
             </button>
             <span class="header-crumb-sep" aria-hidden="true" dangerouslySetInnerHTML={{ __html: chevronSep }} />
+            {currentPage.value === "deploy-model" && (
+              <>
+                <button class="header-crumb" onClick={() => navigate("run-detail", { runId: routeParams.value.runId })}>
+                  {deployRunLabel()}
+                </button>
+                <span class="header-crumb-sep" aria-hidden="true" dangerouslySetInnerHTML={{ __html: chevronSep }} />
+              </>
+            )}
             <h1 class="header-title header-title--leaf" title={leaf}>{leaf}</h1>
           </nav>
         ) : onDashboard && currentProject.value ? (
