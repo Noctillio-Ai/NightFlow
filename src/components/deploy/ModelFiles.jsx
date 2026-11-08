@@ -37,9 +37,11 @@ function Progress({ format, job }) {
   const pct = Math.round(((idx + 0.5) / stages.length) * 100);
   return (
     <div class="dpm-progress" role="status" aria-live="polite">
-      <div class="dpm-tile-value dpm-tile-value--sm">{stages[idx][1]}…</div>
+      <div class="dpm-tile-line">
+        <span class="dpm-tile-value dpm-tile-value--sm">{stages[idx][1]}…</span>
+        <span class="dpm-tile-detail">Step {idx + 1} of {stages.length} · {elapsedLabel(now - job.startedAt)}</span>
+      </div>
       <div class="dpm-bar"><span style={{ width: `${pct}%` }} /></div>
-      <div class="dpm-tile-detail">Step {idx + 1} of {stages.length} · {elapsedLabel(now - job.startedAt)}</div>
     </div>
   );
 }
@@ -72,49 +74,35 @@ function FormatTile({ f, info, job, error, isRemote, disabledReason, selected, o
 
   return (
     <div class={`dpm-tile is-${state}${selected ? " is-selected" : ""}`} onClick={onSelect}>
-      <div class="dpm-tile-top">
-        <span class="dpm-tile-icon">{f.icon}</span>
-        <button type="button" class="dpm-tile-name" onClick={stop(onSelect)} aria-pressed={selected} title="Show the script for this format">
-          {f.label} <code>{f.ext}</code>
-        </button>
-        {chip}
-      </div>
+      <span class="dpm-tile-icon">{f.icon}</span>
 
-      <div class="dpm-tile-body">
+      <div class="dpm-tile-main">
+        <div class="dpm-tile-top">
+          <button type="button" class="dpm-tile-name" onClick={stop(onSelect)} aria-pressed={selected} title="Show the script for this format">
+            {f.label} <code>{f.ext}</code>
+          </button>
+          {chip}
+        </div>
         {job ? (
           <Progress format={f.id} job={job} />
         ) : info ? (
-          <>
-            <div class="dpm-tile-value">{formatBytes(info.sizeBytes)}</div>
-            <div class="dpm-tile-detail" title={info.path}>
+          <div class="dpm-tile-line" title={info.path}>
+            <span class="dpm-tile-value">{formatBytes(info.sizeBytes)}</span>
+            <span class="dpm-tile-detail">
               Exported {info.modifiedMs ? formatRelativeTime(info.modifiedMs) : ""}{isRemote ? " · on training machine" : ""}
-            </div>
-          </>
+            </span>
+          </div>
         ) : (
-          <>
-            <div class="dpm-tile-value dpm-tile-value--muted">{f.tagline}</div>
-            <div class="dpm-tile-detail">{disabledReason || f.desc}</div>
-          </>
+          <div class="dpm-tile-line">
+            <span class="dpm-tile-value dpm-tile-value--muted">{f.tagline}</span>
+            <span class="dpm-tile-detail" title={disabledReason || f.desc}>{disabledReason || f.desc}</span>
+          </div>
         )}
       </div>
-
-      {savedPath && !job && (
-        <div class="dpm-tile-msg dpm-tile-msg--ok">
-          <CheckIcon size={12} /><span>Saved to <code>{savedPath}</code></span>
-          <button type="button" class="dpm-link" onClick={stop(() => revealItemInDir(savedPath).catch(() => {}))}>Show</button>
-        </div>
-      )}
-      {error && !job && (
-        <div class="dpm-tile-msg dpm-tile-msg--err" title={error}><AlertIcon size={12} /><span>{error}</span></div>
-      )}
 
       <div class="dpm-tile-actions">
         {state === "ready" && (
           <>
-            <button type="button" class="dash-btn dash-btn--primary dpm-tile-btn" onClick={stop(save)} disabled={saving}>
-              {saving ? <span class="download-spinner" /> : <DownloadIcon size={14} />}
-              {saving ? "Saving…" : "Download"}
-            </button>
             <div class="dpm-tools">
               <button type="button" class="dpm-icon-btn" onClick={stop(() => onBuild(true))} title="Rebuild from the checkpoint" aria-label={`Rebuild ${f.label}`}>
                 <RefreshIcon size={14} />
@@ -135,19 +123,28 @@ function FormatTile({ f, info, job, error, isRemote, disabledReason, selected, o
                 </button>
               )}
             </div>
+            <button type="button" class="dash-btn dash-btn--primary dpm-tile-btn" onClick={stop(save)} disabled={saving}>
+              {saving ? <span class="download-spinner" /> : <DownloadIcon size={14} />}
+              {saving ? "Saving…" : "Download"}
+            </button>
           </>
         )}
         {state === "empty" && (
           <button type="button" class="dash-btn dpm-tile-btn" onClick={stop(() => onBuild(false))}>
-            <LayersIcon size={14} /> Export {f.label}
-          </button>
-        )}
-        {state === "building" && (
-          <button type="button" class="dash-btn dpm-tile-btn" disabled>
-            <span class="download-spinner" /> Exporting…
+            <LayersIcon size={14} /> Export
           </button>
         )}
       </div>
+
+      {savedPath && !job && (
+        <div class="dpm-tile-msg dpm-tile-msg--ok">
+          <CheckIcon size={12} /><span>Saved to <code>{savedPath}</code></span>
+          <button type="button" class="dpm-link" onClick={stop(() => revealItemInDir(savedPath).catch(() => {}))}>Show</button>
+        </div>
+      )}
+      {error && !job && (
+        <div class="dpm-tile-msg dpm-tile-msg--err" title={error}><AlertIcon size={12} /><span>{error}</span></div>
+      )}
     </div>
   );
 }

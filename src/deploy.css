@@ -2,7 +2,10 @@
    Deploy model page — builds on run-detail.css (rd-*) and dashboard.css (dash-*)
    ======================================== */
 
-.dpm { gap: 18px; }
+/* The page fills the viewport: header and tiles take what they need, the
+   settings rail and script editor stretch to the bottom edge. */
+.dpm { gap: 16px; height: 100%; padding-bottom: 4px; }
+.dpm > * { flex-shrink: 0; }
 .dpm-muted { color: var(--text-muted); }
 .dpm-back { flex-shrink: 0; gap: 7px; height: 38px; padding: 0 16px; }
 
@@ -16,6 +19,30 @@
   color: var(--text-secondary);
 }
 .dpm-meta-num { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.dpm-head { align-items: center; }
+.dpm-head .rd-head-main { gap: 6px; }
+.dpm-head-side { display: flex; align-items: stretch; gap: 10px; flex-shrink: 0; }
+.dpm-stat {
+  --tone: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 112px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+}
+.dpm-stat--ok {
+  --tone: var(--dash-ok);
+  border-color: color-mix(in srgb, var(--dash-ok) 28%, var(--border-color));
+  background: linear-gradient(160deg, color-mix(in srgb, var(--dash-ok) 9%, var(--bg-surface)), var(--bg-surface) 70%);
+}
+.dpm-stat-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
+.dpm-stat-value { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.1; color: var(--tone); font-variant-numeric: tabular-nums; }
+.dpm-head-side .dpm-back { align-self: center; }
 
 /* ── Chips ── */
 
@@ -48,27 +75,45 @@
 
 /* ── Format tiles (KPI-tile language) ── */
 
-.dpm-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.dpm-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 
+/* Each tile is one compact row: icon · name + size · actions. */
 .dpm-tile {
   --tone: var(--text-muted);
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 8px;
   min-width: 0;
-  padding: 16px 16px 14px;
+  padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid var(--border-color);
   background: var(--bg-surface);
   cursor: pointer;
+  overflow: hidden;
+  container-type: inline-size;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
+/* Thin tone bar along the top edge shows status at a glance. */
+.dpm-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--tone), transparent 85%);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.dpm-tile.is-ready::before, .dpm-tile.is-building::before { opacity: 0.5; }
+.dpm-tile.is-selected::before { opacity: 1; }
 .dpm-tile:hover { border-color: color-mix(in srgb, var(--text-muted) 70%, var(--border-color)); }
 .dpm-tile.is-ready { --tone: var(--dash-ok); }
 .dpm-tile.is-building { --tone: #3b82f6; }
 .dpm-tile.is-disabled { cursor: default; }
-.dpm-tile.is-disabled > :not(.dpm-tile-top) { opacity: 0.6; }
+.dpm-tile.is-disabled > :not(.dpm-tile-main) { opacity: 0.55; }
+.dpm-tile.is-disabled .dpm-tile-line { opacity: 0.7; }
 
 .dpm-tile.is-selected {
   border-color: color-mix(in srgb, var(--tone) 55%, var(--border-color));
@@ -81,13 +126,11 @@
   background: var(--bg-surface);
 }
 
-.dpm-tile-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
-
 .dpm-tile-icon {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   flex-shrink: 0;
   border-radius: 11px;
   color: var(--text-secondary);
@@ -101,46 +144,59 @@
   border-color: color-mix(in srgb, var(--tone) 28%, transparent);
 }
 
+.dpm-tile-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dpm-tile-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
 .dpm-tile-name {
-  flex: 1;
   min-width: 0;
   display: flex;
   align-items: baseline;
-  gap: 7px;
+  gap: 6px;
   padding: 0;
   border: 0;
   background: none;
   color: var(--text-primary);
   font: inherit;
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 620;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
 }
 .dpm-tile-name code { font-family: var(--dash-mono); font-size: 11.5px; font-weight: 400; color: var(--text-muted); }
 .dpm-tile-name:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; border-radius: 4px; }
+.dpm-tile-top .dpm-chip { height: 20px; padding: 0 8px; font-size: 11px; }
 
-.dpm-tile-body { display: flex; flex-direction: column; gap: 3px; min-height: 50px; }
-.dpm-tile-value { font-size: 24px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.dpm-tile-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; }
+.dpm-tile-value { font-size: 19px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; font-variant-numeric: tabular-nums; color: var(--text-primary); flex-shrink: 0; }
 .dpm-tile.is-ready .dpm-tile-value { color: var(--dash-ok); }
-.dpm-tile-value--muted { font-size: 17px; font-weight: 600; color: var(--text-secondary); letter-spacing: -0.01em; }
-.dpm-tile-value--sm { font-size: 14px; font-weight: 600; letter-spacing: 0; }
+.dpm-tile-value--muted { font-size: 13.5px; font-weight: 600; color: var(--text-secondary); letter-spacing: -0.005em; }
+.dpm-tile-value--sm { font-size: 13px; font-weight: 600; letter-spacing: 0; }
 .dpm-tile-detail {
-  font-size: 12.5px;
-  line-height: 1.45;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--text-muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dpm-tile-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
-.dpm-tile-btn { gap: 7px; height: 34px; padding: 0 14px; }
-.dpm-tile.is-empty .dpm-tile-btn, .dpm-tile.is-building .dpm-tile-btn { flex: 1; justify-content: center; }
+.dpm-tile-actions { display: flex; align-items: center; gap: 6px; }
+.dpm-tile-actions:empty { display: none; }
+.dpm-tile-btn { gap: 7px; height: 32px; padding: 0 13px; }
 .dpm-tile-btn .download-spinner { width: 13px; height: 13px; flex-shrink: 0; }
-.dpm-tools { display: flex; gap: 2px; }
+.dpm-tools { display: flex; gap: 0; }
+.dpm-tools .dpm-icon-btn { min-width: 28px; height: 28px; }
 
+/* Narrow tiles: actions drop to their own row. */
+@container (max-width: 440px) {
+  .dpm-tile-actions { grid-column: 1 / -1; justify-content: space-between; }
+  .dpm-tile-actions .dpm-tile-btn { order: -1; }
+  .dpm-tile.is-empty .dpm-tile-btn { flex: 1; justify-content: center; }
+}
+
+.dpm-tile > .dpm-tile-msg { grid-column: 1 / -1; }
 .dpm-tile-msg {
   display: flex;
   align-items: flex-start;
@@ -169,7 +225,7 @@
 }
 
 /* Progress */
-.dpm-progress { display: flex; flex-direction: column; gap: 7px; }
+.dpm-progress { display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
 .dpm-bar { height: 4px; border-radius: 999px; background: var(--dash-track); overflow: hidden; }
 .dpm-bar > span {
   display: block;
@@ -214,11 +270,25 @@
 
 /* ── Body ── */
 
-.dpm-body { align-items: stretch; }
+.dpm-body {
+  flex: 1 1 0;
+  flex-shrink: 1;
+  min-height: 540px;
+  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+.dpm-body > * { min-height: 0; }
+.dpm-body .rd-side { position: static; }
 .dpm-body .rd-main { min-height: 0; }
 
-.dpm-settings .rd-card-head { margin-bottom: 12px; }
-.dpm-settings-fields { display: flex; flex-direction: column; gap: 11px; }
+/* Settings card fills the rail; the class-name list takes the slack. */
+.dpm-settings { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: thin; }
+.dpm-settings .rd-card-head { margin-bottom: 14px; }
+.dpm-settings-fields { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.dpm-settings-fields > .dpm-field:last-child { flex: 1; min-height: 120px; }
+.dpm-settings-fields > .dpm-field:last-child textarea { flex: 1; min-height: 90px; resize: none; line-height: 1.6; }
 
 /* Hugging Face card */
 .dpm-hub { padding: 14px 16px; }
@@ -245,7 +315,9 @@
 .dpm-editor {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-width: 0;
+  min-height: 0;
   border: 1px solid var(--border-color);
   border-radius: 14px;
   background: var(--bg-surface);
@@ -263,6 +335,43 @@
 .dpm-editor-file .dpm-chip { font-family: inherit; }
 .dpm-editor-lines { font-family: system-ui, sans-serif; font-size: 12px; font-weight: 400; color: var(--text-muted); white-space: nowrap; }
 .dpm-editor-head .dash-btn { gap: 6px; }
+.dpm-editor-tools { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+/* Format switcher in the editor header */
+.dpm-seg {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 10px;
+  border: 1px solid var(--dash-inset-border);
+  background: var(--dash-inset);
+}
+.dpm-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.dpm-seg button:hover { color: var(--text-primary); }
+.dpm-seg button.is-active {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border-color);
+}
+.dpm-seg button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+.dpm-seg-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); opacity: 0.45; }
+.dpm-seg-dot.is-ok { background: var(--dash-ok); opacity: 1; box-shadow: 0 0 6px color-mix(in srgb, var(--dash-ok) 60%, transparent); }
 
 .python-logo { flex-shrink: 0; }
 .python-logo .python-top { fill: #3b82f6; }
@@ -281,16 +390,16 @@
 .dpm-pip-prompt { color: var(--dash-ok); font-weight: 700; user-select: none; }
 .dpm-pip code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; color: var(--text-primary); font-family: inherit; scrollbar-width: none; }
 
-/* Fill the visible area so the page itself barely scrolls. */
+/* Takes all remaining height in the editor. */
 .dpm-code {
   display: flex;
-  flex: none;
-  height: max(300px, calc(100vh - 568px));
+  flex: 1 1 0;
+  min-height: 0;
   overflow: auto;
   background: var(--dash-inset);
   font-family: var(--dash-mono);
-  font-size: 12.5px;
-  line-height: 1.65;
+  font-size: 13px;
+  line-height: 1.7;
   scrollbar-width: thin;
 }
 .dpm-gutter {
@@ -426,14 +535,30 @@
 
 /* ── Responsive ── */
 
+@media (min-width: 1700px) {
+  .dpm-body { grid-template-columns: 360px minmax(0, 1fr); }
+  .dpm-code { font-size: 13.5px; }
+}
+
+@media (max-width: 1280px) {
+  .dpm-stat { min-width: 96px; padding: 7px 12px; }
+  .dpm-stat-value { font-size: 19px; }
+}
+
 @media (max-width: 1100px) {
   .dpm-tiles { grid-template-columns: minmax(0, 1fr); }
-  .dpm-tile { flex-direction: row; flex-wrap: wrap; align-items: center; }
-  .dpm-tile-top { flex: 1 1 220px; }
-  .dpm-tile-body { flex: 2 1 240px; min-height: 0; }
-  .dpm-tile-actions { margin-top: 0; }
+  .dpm-head { flex-wrap: wrap; }
 }
 
 @media (max-width: 980px) {
-  .dpm-code { height: 480px; }
+  .dpm { height: auto; }
+  .dpm-body { flex: none; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  .dpm-body .rd-side { display: flex; flex-direction: column; }
+  .dpm-code { flex: none; height: 520px; }
+  .dpm-editor-file .dpm-editor-lines { display: none; }
+}
+
+@media (max-width: 640px) {
+  .dpm-head-side { flex-wrap: wrap; }
+  .dpm-seg button { padding: 0 8px; }
 }

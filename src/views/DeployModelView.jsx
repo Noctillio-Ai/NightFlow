@@ -63,7 +63,7 @@ function DeployModel({ run }) {
 
   return (
     <div class="run-detail-view dash rd dpm">
-      <header class="rd-head">
+      <header class="rd-head dpm-head">
         <div class="rd-head-main">
           <span class="rd-eyebrow rd-tone--ok">Deploy model</span>
           <div class="rd-title">
@@ -75,13 +75,25 @@ function DeployModel({ run }) {
             <span>{run.taskType || project?.taskType || "Classification"}</span>
             {imageSize && <span>{imageSize}×{imageSize} input</span>}
             {numClasses && <span>{numClasses} classes</span>}
-            {Number.isFinite(run.bestAcc) && <span>Best val {h.name} <b class="dpm-meta-num">{h.format(run.bestAcc)}</b></span>}
-            {Number.isFinite(run.testAcc) && <span>Test <b class="dpm-meta-num">{h.format(run.testAcc)}</b></span>}
           </div>
         </div>
-        <button type="button" class="dash-btn dpm-back" onClick={() => navigate("run-detail", { runId: run.id })}>
-          <ArrowLeftIcon size={15} /> Back to run
-        </button>
+        <div class="dpm-head-side">
+          {Number.isFinite(run.bestAcc) && (
+            <div class="dpm-stat dpm-stat--ok">
+              <span class="dpm-stat-label">Best val {h.name}</span>
+              <span class="dpm-stat-value">{h.format(run.bestAcc)}</span>
+            </div>
+          )}
+          {Number.isFinite(run.testAcc) && (
+            <div class="dpm-stat">
+              <span class="dpm-stat-label">Test {h.name}</span>
+              <span class="dpm-stat-value">{h.format(run.testAcc)}</span>
+            </div>
+          )}
+          <button type="button" class="dash-btn dpm-back" onClick={() => navigate("run-detail", { runId: run.id })}>
+            <ArrowLeftIcon size={15} /> Back to run
+          </button>
+        </div>
       </header>
 
       {hasCkpt === false && !ready && (
@@ -102,7 +114,7 @@ function DeployModel({ run }) {
           <PublishCard run={run} project={project} hp={hp} />
         </aside>
         <div class="rd-main">
-          <ScriptEditor s={script} run={run} format={format} />
+          <ScriptEditor s={script} run={run} format={format} onSelect={setPicked} />
         </div>
       </div>
     </div>

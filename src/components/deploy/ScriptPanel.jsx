@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "preact/hooks";
 import { platform, gpuAvailable } from "../../state/dashboard.js";
 import { runExports } from "../../state/exports.js";
 import { generateInferenceScript, highlightPython, deviceOptions, defaultDevice, requirementsFor } from "./script.js";
-import { FORMAT_BY_ID, Field, CopyButton, PythonLogo, AlertIcon, Svg } from "./shared.jsx";
+import { FORMATS, FORMAT_BY_ID, Field, CopyButton, PythonLogo, AlertIcon, Svg } from "./shared.jsx";
 
 const SlidersIcon = ({ size }) => (
   <Svg size={size}><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></Svg>
@@ -103,8 +103,9 @@ export function ScriptSettings({ s, format }) {
   );
 }
 
-export function ScriptEditor({ s, run, format }) {
-  const exported = (runExports.value[run.id] || []).some((e) => e.format === format);
+export function ScriptEditor({ s, run, format, onSelect }) {
+  const exports = (runExports.value[run.id] || []).map((e) => e.format);
+  const exported = exports.includes(format);
   const highlighted = useMemo(() => highlightPython(s.script), [s.script]);
   const lineCount = s.script.split("\n").length;
   const gutter = useMemo(() => Array.from({ length: lineCount }, (_, i) => i + 1).join("\n"), [lineCount]);
@@ -115,10 +116,27 @@ export function ScriptEditor({ s, run, format }) {
         <span class="dpm-editor-file">
           <PythonLogo size={15} />
           inference.py
-          <span class="dpm-chip">{s.fmt.label}</span>
           <span class="dpm-editor-lines">{lineCount} lines</span>
         </span>
-        <CopyButton text={s.script} label="Copy script" />
+        <div class="dpm-editor-tools">
+          <div class="dpm-seg" role="tablist" aria-label="Script format">
+            {FORMATS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                role="tab"
+                aria-selected={f.id === format}
+                class={f.id === format ? "is-active" : ""}
+                onClick={() => onSelect?.(f.id)}
+                title={exports.includes(f.id) ? `${f.label} exported` : `${f.label} not exported yet`}
+              >
+                <span class={`dpm-seg-dot${exports.includes(f.id) ? " is-ok" : ""}`} />
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <CopyButton text={s.script} label="Copy script" />
+        </div>
       </div>
       <div class="dpm-pip">
         <span class="dpm-pip-prompt" aria-hidden="true">$</span>
