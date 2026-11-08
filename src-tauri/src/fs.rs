@@ -1419,7 +1419,8 @@ mod csv_mapping_tests {
             None, None, None, None, Some("train".into())).unwrap();
         assert_eq!(result.total, 1);
         assert_eq!(result.images[0].label, "cat | dog");
-        assert!(result.images[0].path.ends_with("train2017/a.jpg"));
+        // Compare components, not text: the path uses `\` on Windows.
+        assert!(std::path::Path::new(&result.images[0].path).ends_with("train2017/a.jpg"));
         assert_eq!(result.class_counts["cat"], 1);
         assert_eq!(result.class_counts["bird"], 0);
         let stats = result.objects.as_ref().unwrap();
