@@ -84,7 +84,65 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --target ${{ matrix.target }} -- -D warnings
 
+      - name: Cache Tauri bundler tools
+        # NSIS (Windows) and AppImage tools (Linux) are downloaded from GitHub
+        # while bundling; caching them avoids failing on a GitHub outage.
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/tauri
+            ~/.cache/tauri
+            ~/Library/Caches/tauri
+          key: tauri-tools-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: tauri-tools-${{ runner.os }}-
+
+      - name: Pre-fetch NSIS tools (Windows)
+        # Tauri downloads these from GitHub while bundling and fails on any
+        # 5xx. Fetch them first with retries into the folder Tauri checks, so
+        # it skips its own download. Versions match what `tauri build` logs
+        # for the Tauri CLI in package-lock.json; update them together.
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:LOCALAPPDATA 'tauri'
+          $nsis  = Join-Path $tools 'NSIS'
+          $dll   = Join-Path $nsis 'Plugins\x86-unicode\additional\nsis_tauri_utils.dll'
+          function Fetch($url, $out) {
+            for ($i = 1; $i -le 6; $i++) {
+              try { Invoke-WebRequest $url -OutFile $out -UseBasicParsing; return }
+              catch { Write-Host "Attempt $i for $url failed: $_"; Start-Sleep -Seconds (15 * $i) }
+            }
+            throw "Could not download $url"
+          }
+          if (-not (Test-Path (Join-Path $nsis 'makensis.exe'))) {
+            $zip = Join-Path $env:RUNNER_TEMP 'nsis-3.11.zip'
+            Fetch 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip' $zip
+            New-Item -ItemType Directory -Force $tools | Out-Null
+            Remove-Item $nsis -Recurse -Force -ErrorAction SilentlyContinue
+            Expand-Archive $zip -DestinationPath $tools -Force
+            Move-Item (Join-Path $tools 'nsis-3.11') $nsis
+          }
+          if (-not (Test-Path $dll)) {
+            New-Item -ItemType Directory -Force (Split-Path $dll) | Out-Null
+            Fetch 'https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll' $dll
+          }
+          Get-ChildItem $nsis -Filter makensis.exe | Select-Object FullName, Length
+          Get-Item $dll | Select-Object FullName, Length
+
       - name: Build Tauri app
+        id: build
+        # A transient download error while bundling is retried once below.
+        continue-on-error: true
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: npx tauri
+          args: --target ${{ matrix.target }}
+
+      - name: Build Tauri app (retry)
+        if: steps.build.outcome == 'failure'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
