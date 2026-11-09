@@ -34,6 +34,7 @@ import { CreateProjectWizard } from "./components/CreateProjectWizard.jsx";
 import { DeleteProjectDialog } from "./components/DeleteProjectDialog.jsx";
 import { EmptyProjectsScreen } from "./components/EmptyProjectsScreen.jsx";
 import { TutorialOverlay } from "./components/TutorialOverlay.jsx";
+import { DialogHost } from "./components/Dialog.jsx";
 import { maybeStartTutorial } from "./state/tutorial.js";
 
 export const shortcutsOpen = signal(false);
@@ -211,6 +212,7 @@ export function App() {
         open={shortcutsOpen.value}
         onClose={() => (shortcutsOpen.value = false)}
       />
+      <DialogHost />
       <AboutModal
         open={aboutOpen.value}
         onClose={() => (aboutOpen.value = false)}

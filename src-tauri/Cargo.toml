@@ -15,6 +15,9 @@ portable-pty = "0.9.0"
 hostname = "0.4.2"
 tokio = { version = "1", features = ["process", "time", "io-util"] }
 window-vibrancy = "0.5"
+tauri-plugin-dialog = "2"
+tar = "0.4"
+flate2 = "1"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 

@@ -85,7 +85,7 @@ export const SETTINGS_GROUPS = [
     label: "App",
     items: [
       { id: "appearance", label: "Appearance", desc: "Theme and app tour", keys: [] },
-      { id: "ssh", label: "SSH keys", desc: "Keys found in ~/.ssh", keys: [] },
+      { id: "ssh", label: "SSH keys", desc: "Keys NightFlow may use", keys: [] },
       { id: "transfer", label: "Import / export", desc: "Move projects between machines", keys: [] },
       { id: "danger", label: "Danger zone", desc: "Delete this project or all data", keys: [], danger: true },
     ],

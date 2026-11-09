@@ -25,6 +25,7 @@ import {
   sshConnected,
   sshConnectionError,
   clearSshConnectionError,
+  toggleSshConnection,
   dashboardSynced,
   dashboardSyncing,
   syncShowingCompletion,
@@ -48,85 +49,56 @@ import {
 } from "../state/training.js";
 import { projectRuns, resolveBackboneName } from "../state/experiments.js";
 import { addToQueue, projectQueue, removeFromQueue, queueLength } from "../state/queue.js";
-import { useEscape } from "../hooks/useEscape.js";
+import { Dialog, DialogIcon } from "../components/Dialog.jsx";
+import { showError } from "../state/dialogs.js";
 import { headlineFor } from "../utils/headline.js";
 import { runSeries, baseName } from "../utils/runCurves.js";
 
+/** What to check, from the wording of an SSH error. */
+function sshErrorHint(message = "") {
+  if (/timed?\s*out|timeout/i.test(message)) return "Check that the host is reachable and the SSH port (default 22) is open.";
+  if (/refused/i.test(message)) return "The server refused the connection. Check that sshd is running on it.";
+  if (/permission|auth|denied|publickey/i.test(message)) return "Authentication failed. Check the SSH key chosen in Settings → Connection, or add one in Settings → SSH keys.";
+  if (/resolve|unknown host|no such host/i.test(message)) return "The hostname couldn't be resolved. Check the address in Settings → Connection.";
+  return "Check the SSH command in Settings → Connection and that the server is reachable.";
+}
+
 function SshErrorModal() {
   const error = sshConnectionError.value;
-  useEscape(!!error, clearSshConnectionError);
   if (!error) return null;
+  const close = () => clearSshConnectionError();
 
   return (
-    <div class="modal-overlay" onClick={() => clearSshConnectionError()}>
-      <div
-        class="modal-dialog ssh-error-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div class="modal-header">
-          <h3 class="modal-title">SSH Connection Failed</h3>
+    <Dialog
+      title="Couldn't connect over SSH"
+      sub={currentProject.value?.sshCommand}
+      icon="plugOff"
+      tone="warning"
+      role="alertdialog"
+      onClose={close}
+      footer={
+        <>
+          <button type="button" class="nfd-btn" onClick={close}>Close</button>
           <button
-            class="modal-close-btn"
-            onClick={() => clearSshConnectionError()}
-            aria-label="Close"
+            type="button"
+            class="nfd-btn nfd-btn--primary"
+            data-autofocus
+            onClick={() => {
+              close();
+              toggleSshConnection();
+            }}
           >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            Try again
           </button>
-        </div>
-        <div class="modal-body">
-          <div class="ssh-error-icon">
-            <svg
-              width="48"
-              height="48"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-          </div>
-          <p class="ssh-error-message">{error.message}</p>
-          {error.message && (
-            <p class="ssh-error-hint">
-              {/timed?\s*out|timeout/i.test(error.message)
-                ? "Check that the host is reachable and the SSH port (default 22) is open."
-                : /refused/i.test(error.message)
-                  ? "The remote machine actively refused the connection. Verify sshd is running."
-                  : /permission|auth|denied|publickey/i.test(error.message)
-                    ? "Authentication failed. Check your SSH key or credentials in the project settings."
-                    : /resolve|unknown host|no such host/i.test(error.message)
-                      ? "Could not resolve the hostname. Verify the address in project settings."
-                      : "Check the SSH command in project settings and ensure the remote machine is accessible."}
-            </p>
-          )}
-        </div>
-        <div class="modal-footer">
-          <button
-            class="btn btn-primary"
-            onClick={() => clearSshConnectionError()}
-          >
-            Close
-          </button>
-        </div>
+        </>
+      }
+    >
+      {error.message && <pre class="nfd-detail">{error.message}</pre>}
+      <div class="nfd-hint">
+        <DialogIcon name="info" size={15} />
+        <span>{sshErrorHint(error.message)}</span>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -239,7 +211,7 @@ function ExperimentCard() {
     try {
       await syncConfig(project, project.id, runId);
       await startTraining(command, project.projectPath, runId, { projectId: project.id });
-    } catch (error) { alert(`Could not start training: ${error.message || error}`); }
+    } catch (error) { showError("Couldn't start training", error); }
   };
 
   // Ctrl/Cmd+Enter starts training, as advertised in the shortcuts modal. It
@@ -269,7 +241,7 @@ function ExperimentCard() {
     try {
       await syncConfig(project, project.id, latestRun.id);
       await startTraining(testCommand, project.projectPath, latestRun.id, { testOnly: true, projectId: project.id });
-    } catch (error) { alert(`Could not start evaluation: ${error.message || error}`); }
+    } catch (error) { showError("Couldn't start evaluation", error); }
   };
 
   // Chart source: the live run while training, otherwise the newest run with history.

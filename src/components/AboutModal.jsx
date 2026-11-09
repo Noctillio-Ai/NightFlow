@@ -1,6 +1,8 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { currentVersion } from "../state/update.js";
 import { platform } from "../state/dashboard.js";
+
+const PLATFORM_NAMES = { macos: "macOS", windows: "Windows", linux: "Linux" };
 import { useEscape } from "../hooks/useEscape.js";
 
 const closeIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
@@ -60,7 +62,7 @@ export function AboutModal({ open, onClose }) {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
               </span>
               <span class="about-detail-label">Platform</span>
-              <span class="about-detail-value about-platform-chip">{platform.value || "unknown"}</span>
+              <span class="about-detail-value about-platform-chip">{PLATFORM_NAMES[platform.value] || platform.value || "Unknown"}</span>
             </div>
           </div>
 

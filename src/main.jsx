@@ -11,7 +11,12 @@ import "./interpretation.css";
 import "./netron-view.css";
 import "./deploy.css";
 import "./settings.css";
+import "./terminal.css";
+import "./ssh-keys.css";
+import "./transfer.css";
 import "./polish.css";
+import "./wizard.css";
+import "./dialogs.css";
 import "@xterm/xterm/css/xterm.css";
 
 render(<App />, document.getElementById("app"));

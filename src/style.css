@@ -19,8 +19,8 @@
   --shadow-color: rgba(255, 255, 255, 0.06);
   --toggle-bg: #262626;
   --toggle-knob: #fafafa;
-  --term-bg: #0f0f1a;
-  --term-toolbar-bg: #13131f;
+  --term-bg: #0a0a0a; /* = --bg-primary: the terminal is the page */
+  --term-toolbar-bg: #0a0a0a;
   --chart-line-1: #5b8def;
   --chart-line-2: #f5a623;
   --chart-line-3: #e55c7a;
@@ -59,8 +59,8 @@
   --shadow-color: rgba(0, 0, 0, 0.10);
   --toggle-bg: #c8c8c8;
   --toggle-knob: #141414;
-  --term-bg: #e8e8e8;
-  --term-toolbar-bg: #dcdcdc;
+  --term-bg: #f2f2f2; /* = --bg-primary */
+  --term-toolbar-bg: #f2f2f2;
   --chart-line-1: #2b5cb5;
   --chart-line-2: #b87614;
   --chart-line-3: #a82e48;
@@ -1086,48 +1086,6 @@ textarea {
 
 /* SSH Error Modal Specific Styles */
 
-.ssh-error-modal .modal-title {
-  color: #ef4444;
-}
-
-.ssh-error-icon {
-  color: #ef4444;
-  opacity: 0.9;
-}
-
-.ssh-error-message {
-  font-size: 0.95rem;
-  color: var(--text-primary);
-  text-align: center;
-  margin: 0;
-  line-height: 1.6;
-}
-
-.btn {
-  padding: 8px 20px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
-  transition:
-    background 0.15s,
-    transform 0.1s;
-}
-
-.btn:active {
-  transform: scale(0.98);
-}
-
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-}
-
-.btn-primary:hover {
-  background: #2563eb;
-}
-
 /* ========================================
    Chart Panel
    ======================================== */
@@ -1292,238 +1250,7 @@ textarea {
   color: var(--text-secondary);
 }
 
-/* ========================================
-   Terminal View
-   ======================================== */
-
-.terminal-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  margin: -24px;
-}
-
-/* ── Toolbar ── */
-
-.terminal-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  background: var(--term-toolbar-bg);
-  border-bottom: 1px solid var(--border-color);
-  min-height: 36px;
-  flex-shrink: 0;
-}
-
-.terminal-toolbar-left,
-.terminal-toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.terminal-toolbar-shell {
-  font-size: 12px;
-  font-weight: 600;
-  font-family: "SF Mono", "Fira Code", monospace;
-  color: var(--text-primary);
-}
-
-.terminal-toolbar-userhost {
-  font-size: 11px;
-  font-family: "SF Mono", "Fira Code", monospace;
-  color: var(--text-muted);
-}
-
-.terminal-toolbar-sep {
-  width: 1px;
-  height: 14px;
-  background: var(--border-color);
-  flex-shrink: 0;
-}
-
-.terminal-toolbar-status {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 1px 6px;
-  border-radius: 4px;
-}
-
-.terminal-toolbar-status.alive {
-  color: #4ade80;
-  background: #4ade8015;
-}
-
-.terminal-toolbar-status.dead {
-  color: #f87171;
-  background: #f8717115;
-}
-
-.terminal-toolbar-dims {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-family: "SF Mono", "Fira Code", monospace;
-  font-variant-numeric: tabular-nums;
-}
-
-.terminal-toolbar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-
-.terminal-toolbar-btn:hover {
-  background: var(--bg-input);
-  color: var(--text-primary);
-}
-
-.terminal-toolbar-btn-kill:hover {
-  background: #f8717120;
-  color: #f87171;
-}
-
-.terminal-toolbar-btn-restart:hover {
-  background: #4ade8020;
-  color: #4ade80;
-}
-
-/* ── xterm container ── */
-
-.terminal-xterm-container {
-  flex: 1;
-  padding: 8px 10px;
-  background: var(--term-bg);
-  overflow: hidden;
-}
-
-.terminal-xterm-container .xterm {
-  height: 100%;
-}
-
-.terminal-xterm-container .xterm-viewport::-webkit-scrollbar {
-  width: 6px;
-}
-
-.terminal-xterm-container .xterm-viewport::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-/* ── SSH Connection Overlay ── */
-
-.terminal-connection-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-app);
-  z-index: 100;
-  animation: fadeIn 0.2s ease;
-}
-
-.terminal-connection-status {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 32px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  min-width: 320px;
-}
-
-.terminal-connection-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--border-color);
-  border-top-color: #60a5fa;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.terminal-connection-icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  font-weight: bold;
-  border-radius: 50%;
-}
-
-.terminal-connection-icon.success {
-  color: #4ade80;
-  background: #4ade8020;
-}
-
-.terminal-connection-icon.failed {
-  color: #f87171;
-  background: #f8717120;
-}
-
-.terminal-connection-text {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  text-align: center;
-}
-
-.terminal-connection-text.success {
-  color: #4ade80;
-}
-
-.terminal-connection-text.failed {
-  color: #f87171;
-}
-
-.terminal-connection-progress {
-  width: 100%;
-  height: 4px;
-  background: var(--bg-input);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.terminal-connection-progress-bar {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
-
-.terminal-connection-progress-bar.connecting {
-  width: 70%;
-  background: #60a5fa;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-.terminal-connection-progress-bar.success {
-  width: 100%;
-  background: #4ade80;
-}
-
-.terminal-connection-progress-bar.failed {
-  width: 100%;
-  background: #f87171;
-}
+/* Terminal view styles live in terminal.css. */
 
 @keyframes spin {
   to {
@@ -1551,15 +1278,6 @@ textarea {
   to {
     opacity: 1;
   }
-}
-
-.terminal-xterm-container .xterm-viewport::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
-}
-
-.terminal-xterm-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
 }
 
 /* ========================================
@@ -2722,7 +2440,10 @@ textarea {
 }
 
 /* ========================================
-   Create Project Wizard
+   Wizard primitives
+   Shared by the project wizard and the smaller dialogs (delete project,
+   settings confirmations). The project wizard's own layout lives in
+   wizard.css.
    ======================================== */
 
 .wizard-overlay {
@@ -2737,128 +2458,8 @@ textarea {
 }
 
 @keyframes wizardFadeIn {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
-.wizard-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 14px;
-  width: var(--modal-w);
-  max-width: 90vw;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-  animation: wizardSlideUp 0.2s ease;
-}
-
-.wizard-card-wide {
-  width: var(--modal-w-wide);
-}
-
-@keyframes wizardSlideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.wizard-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.wizard-header h2 {
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin: 0;
-  color: var(--text-primary);
-}
-
-.wizard-close-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-  font-size: 1.1rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: color 0.2s ease;
-}
-
-.wizard-close-btn:hover {
-  color: var(--text-primary);
-}
-
-.wizard-step-counter {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  margin-left: auto;
-  margin-right: 12px;
-}
-
-.wizard-dots {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  padding: 14px 20px 0;
-}
-
-.wizard-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--border-color);
-  transition: background 0.2s ease;
-}
-
-.wizard-dot.active {
-  background: var(--accent);
-}
-
-.wizard-body {
-  padding: 20px;
-  min-height: 160px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.wizard-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.wizard-body::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 2px;
-}
-
-.wizard-step-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 4px;
-}
-
-.wizard-step-desc {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin: 0 0 16px;
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .wizard-input {
@@ -2887,166 +2488,7 @@ textarea {
   letter-spacing: -0.02em;
 }
 
-.wizard-options-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-
-.wizard-option {
-  padding: 14px 12px;
-  border-radius: 8px;
-  border: 1.5px solid var(--border-color);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: center;
-  transition:
-    border-color 0.2s ease,
-    color 0.2s ease;
-}
-
-.wizard-option:hover {
-  border-color: var(--text-secondary);
-  color: var(--text-primary);
-}
-
-.wizard-option.selected {
-  border-color: var(--accent);
-  color: var(--text-primary);
-}
-
-.wizard-option-sm {
-  padding: 8px 10px;
-  font-size: 0.72rem;
-}
-
-.wizard-sub-section {
-  margin-top: 14px;
-}
-
-.wizard-sub-label {
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  margin: 0 0 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.wizard-dataset-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  align-items: stretch;
-}
-
-.wizard-dataset-layout .wizard-category-list {
-  justify-content: center;
-}
-
-.wizard-structure-preview {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.wizard-structure-header {
-  padding: 8px 12px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.wizard-structure-tree {
-  padding: 10px 12px;
-  font-family: var(--font-mono, monospace);
-  font-size: 0.7rem;
-  line-height: 1.7;
-  color: var(--text-secondary);
-}
-
-.wizard-tree-line {
-  white-space: nowrap;
-}
-
-.wizard-tree-dir {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.wizard-tree-file {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-muted);
-}
-
-.wizard-tree-icon {
-  flex-shrink: 0;
-  vertical-align: middle;
-}
-
-.wizard-tree-icon-dir {
-  color: var(--accent);
-  opacity: 0.7;
-}
-
-.wizard-tree-icon-file {
-  color: var(--text-muted);
-  opacity: 0.7;
-}
-
-.wizard-structure-sample {
-  border-top: 1px solid var(--border-color);
-  padding: 8px 12px;
-}
-
-.wizard-structure-sample-label {
-  font-size: 0.66rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 4px;
-}
-
-.wizard-structure-code {
-  margin: 0;
-  padding: 8px 10px;
-  background: var(--bg-primary);
-  border-radius: 6px;
-  font-family: var(--font-mono, monospace);
-  font-size: 0.65rem;
-  line-height: 1.6;
-  color: var(--text-secondary);
-  overflow-x: auto;
-  white-space: pre;
-}
-
-.wizard-structure-note {
-  padding: 8px 12px;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  border-top: 1px solid var(--border-color);
-  font-style: italic;
-}
-
 select.wizard-input {
-  /* Keep selects consistent with .settings-select rather than falling back to
-     the native control; pair with a .settings-select-chevron when used. */
   appearance: none;
   -webkit-appearance: none;
   padding-right: 32px;
@@ -3056,200 +2498,22 @@ select.wizard-input {
   background-position: right 10px center;
 }
 
-.wizard-ssh-input-section {
-  margin-top: 20px;
-}
-
-.wizard-ssh-input-section .wizard-sub-label {
-  margin-bottom: 8px;
-}
-
-.wizard-ssh-test-row {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.wizard-ssh-test-btn {
-  flex-shrink: 0;
-  padding: 6px 14px;
-  font-size: 0.78rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-@keyframes wizard-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.wizard-ssh-spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: wizard-spin 0.7s linear infinite;
-  flex-shrink: 0;
-}
-
-.wizard-ssh-test-result {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  line-height: 1.5;
-  border: 1px solid transparent;
-}
-
-.wizard-ssh-test-result.success {
-  background: #4ade8010;
-  border-color: #4ade8030;
-  color: #4ade80;
-}
-
-.wizard-ssh-test-result.error {
-  background: #f8717110;
-  border-color: #f8717130;
-  color: #f87171;
-}
-
-.wizard-ssh-test-icon {
-  flex-shrink: 0;
-  font-weight: 700;
-  line-height: 1.5;
-}
-
-.wizard-ssh-test-message {
-  word-break: break-word;
-  font-family: var(--font-mono, monospace);
-  font-size: 0.75rem;
-}
-
-.wizard-project-path-section {
-  margin-top: 20px;
-}
-
-.wizard-project-path-section .wizard-sub-label {
-  margin-bottom: 8px;
-}
-
-.wizard-folder-path-section {
-  margin-top: 20px;
-}
-
-.wizard-folder-path-section .wizard-sub-label {
-  margin-bottom: 8px;
-}
-
-.wizard-file-paths-section {
-  margin-top: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.wizard-file-paths-section .wizard-sub-label {
-  margin-bottom: 0;
-}
-
-.wizard-file-path-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.wizard-file-path-label {
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.wizard-required-indicator {
-  color: #e55555;
-  font-weight: 600;
-}
-
-.wizard-optional-indicator {
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 400;
-}
-
-/* ── Wizard Tutorial Tip ── */
-
-.wizard-tip {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 12px 20px 0;
-  padding: 12px 14px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  animation: wizardTipIn 0.3s ease;
-}
-
-@keyframes wizardTipIn {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.wizard-tip-icon {
-  flex-shrink: 0;
-  color: var(--text-muted);
-  margin-top: 1px;
-  display: flex;
-  align-items: center;
-}
-
-.wizard-tip-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.wizard-tip-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  display: block;
-  margin-bottom: 3px;
-}
-
-.wizard-tip-body {
-  font-size: 0.73rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.wizard-tip-dismiss {
-  flex-shrink: 0;
+.wizard-close-btn {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 1.15rem;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 4px;
+  font-size: 1.1rem;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 4px;
   transition: color 0.2s ease;
 }
 
-.wizard-tip-dismiss:hover {
+.wizard-close-btn:hover {
   color: var(--text-primary);
 }
 
@@ -3297,207 +2561,37 @@ select.wizard-input {
   cursor: not-allowed;
 }
 
-.wizard-category-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.wizard-category {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  border: 1.5px solid var(--border-color);
-  background: var(--bg-surface);
-  cursor: pointer;
-  text-align: center;
-  transition: border-color 0.2s ease;
-}
-
-.wizard-category:hover {
-  border-color: var(--text-secondary);
-}
-
-.wizard-category.selected {
-  border-color: var(--accent);
-}
-
-.wizard-category-name {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.wizard-category-desc {
+/* CSV column fields (CsvColumnFields.jsx) are reused by project settings. */
+.wizard-sub-label {
   font-size: 0.72rem;
-  color: var(--text-muted);
-}
-
-.wizard-coming-soon-badge {
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  padding: 2px 8px;
-  border-radius: 8px;
-  margin-top: 2px;
-}
-
-.wizard-task-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  align-items: stretch;
-}
-
-.wizard-task-preview {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 16px;
-  height: 100%;
-}
-
-.wizard-task-svg {
-  width: 100%;
-  max-width: 220px;
-  height: auto;
-}
-
-.wizard-model-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  align-items: stretch;
-}
-
-.wizard-model-preview {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.wizard-model-bars {
-  padding: 16px 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.wizard-model-bar-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.wizard-model-bar-label {
-  font-size: 0.7rem;
   font-weight: 500;
   color: var(--text-muted);
-  width: 52px;
-  flex-shrink: 0;
-}
-
-.wizard-model-bar-track {
-  flex: 1;
-  height: 8px;
-  background: var(--bg-primary);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.wizard-model-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.wizard-model-bar-speed {
-  background: var(--accent);
-  opacity: 0.7;
-}
-
-.wizard-model-bar-acc {
-  background: #70ad47;
-  opacity: 0.7;
-}
-
-.wizard-model-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1px;
-  background: var(--border-color);
-  border-top: 1px solid var(--border-color);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.wizard-model-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 10px 14px;
-  background: var(--bg-surface);
-}
-
-.wizard-model-stat-value {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.wizard-model-stat-label {
-  font-size: 0.65rem;
-  color: var(--text-muted);
+  margin: 0 0 6px;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
-.wizard-confirm-table {
+.wizard-file-paths-section {
+  margin-top: 20px;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  overflow: hidden;
+  gap: 16px;
 }
 
-.wizard-confirm-row {
+.wizard-file-paths-section .wizard-sub-label {
+  margin-bottom: 0;
+}
+
+.wizard-file-path-group {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-color);
+  flex-direction: column;
+  gap: 6px;
 }
 
-.wizard-confirm-row:last-child {
-  border-bottom: none;
-}
-
-.wizard-confirm-label {
-  font-size: 0.75rem;
+.wizard-file-path-label {
+  font-size: 0.82rem;
   font-weight: 500;
-  color: var(--text-muted);
-}
-
-.wizard-confirm-value {
-  font-size: 0.78rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  font-family: var(--font-mono, monospace);
-  text-align: right;
-  max-width: 60%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text-secondary);
 }
 
 /* ========================================
@@ -3524,78 +2618,50 @@ select.wizard-input {
    Delete Project Dialog
    ======================================== */
 
-.delete-dialog {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 14px;
-  width: var(--modal-w);
-  max-width: 90vw;
-  padding: var(--shell-pad);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.delete-dialog-header {
+/* "Keep a copy?" offer before deleting */
+.delete-export {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 12px 12px 14px;
+  border: 1px solid color-mix(in srgb, #60a5fa 30%, var(--border-color));
+  border-radius: 12px;
+  background: color-mix(in srgb, #60a5fa 7%, var(--bg-surface));
 }
-
-.delete-dialog-header h2 {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: #e55;
-  margin: 0;
+.delete-export-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  color: #60a5fa;
+  background: color-mix(in srgb, #60a5fa 15%, transparent);
 }
-
-.delete-dialog-body {
-  margin-bottom: 20px;
-}
-
-.delete-dialog-warning {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin: 0 0 12px 0;
-}
-
-.delete-dialog-warning strong {
-  color: var(--text-primary);
-}
-
-.delete-dialog-prompt {
-  font-size: 0.8rem;
+.delete-export-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
   color: var(--text-muted);
-  margin: 0 0 8px 0;
 }
-
-.delete-dialog-prompt strong {
-  color: var(--text-secondary);
+.delete-export-text strong { font-size: 0.82rem; color: var(--text-primary); }
+.delete-export-btn { flex-shrink: 0; padding: 7px 14px; white-space: nowrap; }
+.delete-export--done {
+  border-color: color-mix(in srgb, #22c55e 32%, var(--border-color));
+  background: color-mix(in srgb, #22c55e 7%, var(--bg-surface));
+}
+.delete-export--done .delete-export-icon { color: #22c55e; background: color-mix(in srgb, #22c55e 15%, transparent); }
+.delete-export-file {
   font-family: var(--font-mono, monospace);
-}
-
-.delete-dialog-input {
-  border-color: #e5555540;
-}
-
-.delete-dialog-input:focus {
-  border-color: #e55;
-  box-shadow: 0 0 0 3px rgba(229, 85, 85, 0.1);
-}
-
-.wizard-btn-danger {
-  background: #e55;
-  color: #fff;
-  border-color: #e55;
-}
-
-.wizard-btn-danger:hover {
-  background: #d44;
-}
-
-.wizard-btn-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  font-size: 0.74rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ========================================
@@ -4461,46 +3527,6 @@ select.wizard-input {
    Keyboard Shortcuts Modal
    ======================================== */
 
-.shortcuts-modal {
-  width: var(--modal-w);
-}
-
-.shortcuts-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.shortcut-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.shortcut-item:last-child {
-  border-bottom: none;
-}
-
-.shortcut-key {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  font-family: "SF Mono", "Fira Code", monospace;
-  font-size: 0.78rem;
-  color: var(--text-primary);
-  min-width: 60px;
-  text-align: center;
-}
-
-.shortcut-action {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-
 /* ========================================
    Tag Chips
    ======================================== */
@@ -4950,50 +3976,7 @@ select.wizard-input {
    UI polish — shared states
    ======================================== */
 
-.ssh-error-hint {
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  margin: 8px 0 0;
-  text-align: center;
-}
-
 /* Bulk-delete confirmation */
-.delete-runs-dialog {
-  max-width: 420px;
-}
-
-.delete-runs-dialog .modal-body {
-  align-items: flex-start;
-  padding: 20px 24px;
-}
-
-.delete-runs-text {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.88rem;
-  line-height: 1.6;
-}
-
-.delete-runs-dialog .btn {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.delete-runs-dialog .btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.delete-runs-dialog .btn.btn-danger {
-  background: #ef4444;
-  border-color: #ef4444;
-  color: #fff;
-}
-
-.delete-runs-dialog .btn.btn-danger:hover:not(:disabled) {
-  background: #dc2626;
-}
 
 /* Sidebar tooltip shortcut hint */
 .sidebar-tooltip-kbd {

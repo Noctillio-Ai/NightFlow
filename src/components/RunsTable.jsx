@@ -13,7 +13,7 @@ import {
 } from "../state/experiments.js";
 import { currentProject } from "../state/projects.js";
 import { navigate } from "../state/router.js";
-import { useEscape } from "../hooks/useEscape.js";
+import { Dialog } from "./Dialog.jsx";
 import { formatDuration, formatRelativeTime } from "../utils/format.js";
 import { baseName } from "../utils/runCurves.js";
 import { RUN_COLORS, MAX_COMPARE } from "../utils/compareRuns.js";
@@ -93,51 +93,54 @@ function toggleSelectAll() {
   selectedRunIds.value = allSelected ? new Set() : new Set(ids);
 }
 
-function DeleteRunsDialog({ count, onCancel, onConfirm }) {
+function DeleteRunsDialog({ runs, onCancel, onConfirm }) {
   const [busy, setBusy] = useState(false);
-  useEscape(!busy, onCancel);
+  const [error, setError] = useState("");
+  const count = runs.length;
+  const shown = runs.slice(0, 5);
   return (
-    <div class="modal-overlay" onClick={busy ? undefined : onCancel}>
-      <div
-        class="modal-dialog delete-runs-dialog"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-runs-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div class="modal-header">
-          <h3 class="modal-title" id="delete-runs-title">
-            Delete {count} {count === 1 ? "run" : "runs"}?
-          </h3>
-        </div>
-        <div class="modal-body">
-          <p class="delete-runs-text">
-            The selected {count === 1 ? "run is" : "runs are"} removed from
-            NightFlow. This can’t be undone.
-          </p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn" onClick={onCancel} disabled={busy}>
-            Cancel
-          </button>
+    <Dialog
+      title={`Delete ${count} ${count === 1 ? "run" : "runs"}?`}
+      sub="Removed from NightFlow. This can't be undone."
+      icon="trash"
+      tone="danger"
+      size="sm"
+      role="alertdialog"
+      busy={busy}
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" class="nfd-btn" onClick={onCancel} disabled={busy}>Cancel</button>
           <button
-            class="btn btn-danger"
-            autoFocus
+            type="button"
+            class="nfd-btn nfd-btn--danger"
+            data-autofocus
             disabled={busy}
             onClick={async () => {
               setBusy(true);
+              setError("");
               try {
                 await onConfirm();
-              } finally {
+              } catch (err) {
+                setError(`Couldn't delete: ${err?.message || err}`);
                 setBusy(false);
               }
             }}
           >
-            {busy ? "Deleting…" : "Delete"}
+            {busy ? <><span class="nfd-spinner" /> Deleting…</> : `Delete ${count === 1 ? "run" : `${count} runs`}`}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <ul class="nfd-facts">
+        {shown.map((r) => (
+          <li key={r.id}><span class="nfd-fact-dot" />{r.name || r.id}</li>
+        ))}
+        {count > shown.length && <li><span class="nfd-fact-dot" />and {count - shown.length} more</li>}
+      </ul>
+      <p class="nfd-text">Log files and checkpoints in the project folder aren't deleted.</p>
+      {error && <p class="nfd-error" role="alert">{error}</p>}
+    </Dialog>
   );
 }
 
@@ -437,7 +440,7 @@ export function RunsTable() {
 
       {confirmDelete && (
         <DeleteRunsDialog
-          count={selected.length}
+          runs={selected}
           onCancel={closeConfirm}
           onConfirm={async () => {
             await deleteSelected(selected.map((r) => r.id));

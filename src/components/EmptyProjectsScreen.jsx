@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openWizard } from "../state/projects.js";
 import { platform } from "../state/dashboard.js";
+import { useState } from "preact/hooks";
+import { chooseImportFile } from "../state/transfer.js";
+import { ImportDialog } from "./ProjectTransfer.jsx";
 
 const minimizeIcon = `<svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="5.5" width="10" height="1" fill="currentColor"/></svg>`;
 const maximizeIcon = `<svg width="12" height="12" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>`;
@@ -8,6 +11,24 @@ const closeIcon = `<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2
 
 export function EmptyProjectsScreen() {
   const isWindows = platform.value === "windows";
+  const [importFile, setImportFile] = useState(null);
+  const [importError, setImportError] = useState("");
+  const [picking, setPicking] = useState(false);
+
+  // Restoring on a fresh install: pick an export, then the Import dialog
+  // creates the project (this screen gives way to the app once it exists).
+  async function pickImport() {
+    setImportError("");
+    setPicking(true);
+    try {
+      const file = await chooseImportFile();
+      if (file) setImportFile(file);
+    } catch (e) {
+      setImportError(e?.message || String(e));
+    } finally {
+      setPicking(false);
+    }
+  }
 
   return (
     <div class="empty-projects-screen" data-tauri-drag-region>
@@ -47,6 +68,7 @@ export function EmptyProjectsScreen() {
             Bring your datasets, training runs, and model insights together.
             Build your next computer vision experiment with NightFlow.
           </p>
+          <div class="empty-projects-actions">
           <button class="empty-projects-btn" onClick={openWizard}>
             <svg
               width="20"
@@ -63,7 +85,26 @@ export function EmptyProjectsScreen() {
             </svg>
             Create your first project
           </button>
-          <p class="empty-projects-note">Local or remote compute. One focused workspace.</p>
+          <button class="empty-projects-btn empty-projects-btn--secondary" onClick={pickImport} disabled={picking}>
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <path d="m7 10 5 5 5-5" />
+              <path d="M12 15V3" />
+            </svg>
+            {picking ? "Opening…" : "Import a project"}
+          </button>
+          </div>
+          {importError && <p class="empty-projects-error" role="alert">{importError}</p>}
+          <p class="empty-projects-note">Local or remote compute. Moving machines? Import an export from NightFlow.</p>
         </section>
         <div class="empty-projects-features">
           <div class="empty-projects-feature">
@@ -125,6 +166,7 @@ export function EmptyProjectsScreen() {
           </div>
         </div>
       </div>
+      {importFile && <ImportDialog file={importFile} project={null} onClose={() => setImportFile(null)} />}
     </div>
   );
 }

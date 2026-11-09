@@ -66,6 +66,8 @@ function _headline(projectId, runId) {
 export const trainingActive = computed(
   () => _get(currentProjectId.value).active,
 );
+/** True while this project has a training/test process running. */
+export const isProjectTraining = (projectId) => !!_get(projectId).active;
 /** True while any project has a training/test process running. */
 export const anyTrainingActive = computed(() =>
   Object.values(_trainingState.value).some((s) => s.active),

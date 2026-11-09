@@ -206,13 +206,6 @@ export async function clearAllData() {
   await deleteDB(DB_NAME);
 }
 
-export async function exportData() {
-  const db = await initDB();
-  const projects = await db.getAll("projects");
-  const runs = await db.getAll("runs");
-  return { projects, runs };
-}
-
 // ========================================
 // Sync Metadata Operations
 // ========================================
@@ -231,26 +224,3 @@ export async function getSyncMetadata(projectId) {
   return project?.syncMetadata || null;
 }
 
-export async function importData(data) {
-  const db = await initDB();
-  const tx = db.transaction(["projects", "runs"], "readwrite");
-
-  // Clear existing data
-  await tx.objectStore("projects").clear();
-  await tx.objectStore("runs").clear();
-
-  // Import new data
-  if (data.projects) {
-    for (const project of data.projects) {
-      await tx.objectStore("projects").put(project);
-    }
-  }
-
-  if (data.runs) {
-    for (const run of data.runs) {
-      await tx.objectStore("runs").put(run);
-    }
-  }
-
-  await tx.done;
-}

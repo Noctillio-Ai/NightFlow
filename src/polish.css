@@ -302,8 +302,7 @@
 [data-theme="light"] :is(.modal-overlay, .wizard-overlay) { background: rgba(20, 20, 30, 0.25); }
 
 .modal-dialog,
-.wizard-card,
-.delete-dialog {
+.wizard-card {
   position: relative;
   border-radius: 18px;
   box-shadow:
@@ -346,6 +345,5 @@
   .app-shell *::before,
   .app-shell *::after,
   .modal-dialog,
-  .wizard-card,
-  .delete-dialog { animation: none !important; transition: none !important; }
+  .wizard-card { animation: none !important; transition: none !important; }
 }
