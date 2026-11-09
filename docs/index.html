@@ -285,9 +285,17 @@
             </details>
             <details>
                 <summary>Can I work with a remote machine?</summary>
-                <p>The integrated terminal can connect through SSH. Managed training currently runs local processes, so
-                    remote training must be launched from the connected terminal. See the <a class="text-link"
-                        href="documentation.html#terminal">remote workflow notes</a>.</p>
+                <p>Yes, over SSH with your own keys. A remote project syncs the Python environment onto the server,
+                    shows the server&rsquo;s machine health, and opens terminal tabs on it. Managed training currently
+                    runs local processes, so remote training is launched from a connected terminal tab. See the <a
+                        class="text-link" href="documentation.html#terminal">remote workflow notes</a>.</p>
+            </details>
+            <details>
+                <summary>Can I move a project to another computer?</summary>
+                <p>Yes. Export it from Settings as Lite (settings), Standard (plus runs and metrics) or Full (plus
+                    logs, checkpoints, exported models and, optionally, the dataset), then choose Import a project on
+                    the other machine. Home-folder paths travel as <code>~/&hellip;</code>, and the import checks each
+                    dataset path. See <a class="text-link" href="documentation.html#transfer">moving projects</a>.</p>
             </details>
             <details>
                 <summary>Where should I start?</summary>
