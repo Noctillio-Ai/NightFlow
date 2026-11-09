@@ -4,8 +4,6 @@
 
 <img src="assets/night_flow.png" width="168" alt="NightFlow logo" />
 
-# NightFlow
-
 ### Train image models on your own computer.
 
 **No cloud. No bills. No code.**
