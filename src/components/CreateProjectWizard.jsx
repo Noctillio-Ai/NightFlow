@@ -32,6 +32,143 @@ import {
   maybeStartWizardTutorial,
   dismissWizardTutorial,
 } from "../state/tutorial.js";
+import { useEscape } from "../hooks/useEscape.js";
+import { SshKeySelect } from "./SshKeys.jsx";
+import { sshKeyPath, sshHost } from "../utils/sshCommand.js";
+import { chooseImportFile } from "../state/transfer.js";
+import { projectsBase, pathPlatform, isDefaultProjectPath } from "../utils/projectPaths.js";
+import { ImportDialog } from "./ProjectTransfer.jsx";
+
+// ── Icons (24px stroke set, matching the rest of the app) ──
+
+const ICONS = {
+  plug: <><path d="M12 22v-5" /><path d="M9 8V2" /><path d="M15 8V2" /><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" /></>,
+  laptop: <><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M2 20h20" /></>,
+  server: <><rect x="2" y="3" width="20" height="8" rx="2" /><rect x="2" y="13" width="20" height="8" rx="2" /><path d="M6 7h.01M6 17h.01" /></>,
+  pencil: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
+  scan: <><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" /><rect x="7" y="7" width="10" height="10" rx="1.5" /></>,
+  cpu: <><rect x="5" y="5" width="14" height="14" rx="2" /><rect x="9" y="9" width="6" height="6" rx="1" /><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" /></>,
+  database: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></>,
+  sliders: <><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" /></>,
+  checkCircle: <><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></>,
+  check: <path d="M20 6 9 17l-5-5" />,
+  arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
+  arrowLeft: <path d="M19 12H5M11 18l-6-6 6-6" />,
+  x: <path d="M18 6 6 18M6 6l12 12" />,
+  download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" /></>,
+  bulb: <><path d="M9 18h6M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z" /></>,
+  tag: <><path d="M12 2H2v10l9.3 9.3a1 1 0 0 0 1.4 0l8.6-8.6a1 1 0 0 0 0-1.4Z" /><path d="M7 7h.01" /></>,
+  tags: <><path d="M9 5H2v7l6.3 6.3a1 1 0 0 0 1.4 0l5.6-5.6a1 1 0 0 0 0-1.4Z" /><path d="m15 5 6.3 6.3a1 1 0 0 1 0 1.4L17 17" /><path d="M6 9h.01" /></>,
+  layers: <><path d="m12 2 10 5-10 5L2 7Z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" /></>,
+  shapes: <><circle cx="7.5" cy="7.5" r="4.5" /><rect x="12" y="12" width="9" height="9" rx="1.5" /></>,
+  phone: <><rect x="6" y="2" width="12" height="20" rx="2" /><path d="M11 18h2" /></>,
+  scale: <><path d="M12 3v18M5 21h14M3 7h18" /><path d="m6 7-3 7a3 3 0 0 0 6 0Z" /><path d="m18 7-3 7a3 3 0 0 0 6 0Z" /></>,
+  cloud: <path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4 12.5 3.5 3.5 0 0 0 6.5 19Z" />,
+  flask: <><path d="M9 3h6M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3" /><path d="M7 15h10" /></>,
+  folder: <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />,
+  table: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18" /></>,
+  braces: <path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1" />,
+  image: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-5-5L5 21" /></>,
+  building: <path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1" />,
+};
+
+function Icon({ name, size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      {ICONS[name]}
+    </svg>
+  );
+}
+
+const TASK_ICONS = {
+  Classification: "tag",
+  "Multi-Label Classification": "tags",
+  "Object Detection": "scan",
+  "Semantic Segmentation": "layers",
+  "Instance Segmentation": "shapes",
+};
+const TIER_ICONS = { Edge: "phone", Balanced: "scale", Cloud: "cloud", Research: "flask" };
+const FORMAT_ICONS = {
+  Folder: "folder",
+  CSV: "table",
+  JSONL: "braces",
+  "COCO JSON": "braces",
+  COCO: "braces",
+  "PNG Masks": "image",
+  Cityscapes: "building",
+  VOC: "folder",
+};
+
+// Per-step header copy and icon. Order matches `steps` below.
+const STEP_META = [
+  { icon: "plug", title: "Where should training run?", desc: "Train on this machine, or connect to a GPU server over SSH." },
+  { icon: "pencil", title: "Name your project", desc: "Pick something you'll recognise later. We'll create a folder for it." },
+  { icon: "scan", title: "Choose a task", desc: "What should the model learn to do with your images?" },
+  { icon: "cpu", title: "Pick a backbone tier", desc: "Trade speed for accuracy based on where the model will be deployed." },
+  { icon: "database", title: "Connect your dataset", desc: "Tell NightFlow how your data is laid out and where it lives." },
+  { icon: "sliders", title: "Training settings", desc: "Optional. Leave anything blank to use the recommended defaults." },
+  { icon: "checkCircle", title: "Review and create", desc: "Check the details below. You can change most of them later." },
+];
+
+// ── Shared building blocks ──
+
+/** A selectable card used for every single-choice list in the wizard. */
+function Choice({ icon, label, desc, selected, disabled, badge, onSelect }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected ? "true" : "false"}
+      class={`wizard-category wz-choice${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}
+      disabled={disabled}
+      onClick={disabled ? undefined : onSelect}
+    >
+      {icon && (
+        <span class="wz-choice-icon">
+          <Icon name={icon} />
+        </span>
+      )}
+      <span class="wz-choice-text">
+        <span class="wizard-category-name">
+          {label}
+          {badge && <span class="wizard-coming-soon-badge">{badge}</span>}
+        </span>
+        {desc && <span class="wizard-category-desc">{desc}</span>}
+      </span>
+      <span class="wz-radio" aria-hidden="true" />
+    </button>
+  );
+}
+
+function Field({ label, htmlFor, required, optional, hint, wide, children }) {
+  return (
+    <div class={`wz-field${wide ? " wz-field--wide" : ""}`}>
+      <label class="wz-label" for={htmlFor}>
+        {label}
+        {required && <span class="wizard-required-indicator" aria-hidden="true">*</span>}
+        {optional && <span class="wizard-optional-indicator">Optional</span>}
+      </label>
+      {children}
+      {hint && <p class="wz-hint">{hint}</p>}
+    </div>
+  );
+}
+
+function Section({ title, children, aside }) {
+  return (
+    <section class="wz-section">
+      <div class="wz-section-head">
+        <h3>{title}</h3>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const enterToContinue = (e) => {
+  if (e.key === "Enter" && wizardCanProceed.value) wizardNext();
+};
 
 // ── Wizard Tutorial Tip ──
 
@@ -41,20 +178,16 @@ function WizardTip({ stepIndex }) {
   if (!tip) return null;
 
   return (
-    <div class="wizard-tip">
+    <div class="wizard-tip" role="note">
       <div class="wizard-tip-icon">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="16" x2="12" y2="12" />
-          <line x1="12" y1="8" x2="12.01" y2="8" />
-        </svg>
+        <Icon name="bulb" size={16} />
       </div>
       <div class="wizard-tip-content">
-        <strong class="wizard-tip-title">{tip.title}</strong>
+        <strong class="wizard-tip-title">Tip</strong>
         <p class="wizard-tip-body">{tip.body}</p>
       </div>
-      <button class="wizard-tip-dismiss" onClick={dismissWizardTutorial} title="Dismiss tips">
-        &times;
+      <button class="wizard-tip-dismiss" onClick={dismissWizardTutorial} title="Hide tips" aria-label="Hide tips">
+        <Icon name="x" size={14} />
       </button>
     </div>
   );
@@ -69,8 +202,8 @@ function StepSSH() {
   const [testMessage, setTestMessage] = useState("");
 
   const connectionTypes = [
-    { id: "localhost", label: "Localhost", desc: "Run on this machine" },
-    { id: "remote", label: "Remote Instance", desc: "Connect via SSH" },
+    { id: "localhost", icon: "laptop", label: "This machine", desc: "Train locally on your own CPU or GPU" },
+    { id: "remote", icon: "server", label: "Remote instance", desc: "Connect to a GPU server over SSH" },
   ];
 
   const isValidSshCommand = (cmd) => {
@@ -92,16 +225,16 @@ function StepSSH() {
   };
 
   return (
-    <div>
-      <p class="wizard-step-title">Connect to Instance</p>
-      <p class="wizard-step-desc">Choose where to run your training.</p>
-
-      <div class="wizard-category-list">
+    <div class="wz-stack">
+      <div class="wz-choice-grid" role="radiogroup" aria-label="Where training runs">
         {connectionTypes.map((type) => (
-          <button
+          <Choice
             key={type.id}
-            class={`wizard-category${d.connectionType === type.id ? " selected" : ""}`}
-            onClick={() => {
+            icon={type.icon}
+            label={type.label}
+            desc={type.desc}
+            selected={d.connectionType === type.id}
+            onSelect={() => {
               wizardSetField("connectionType", type.id);
               setTestStatus("idle");
               setTestMessage("");
@@ -111,55 +244,77 @@ function StepSSH() {
                 wizardSetField("sshCommand", "");
               }
             }}
-          >
-            <span class="wizard-category-name">{type.label}</span>
-            <span class="wizard-category-desc">{type.desc}</span>
-          </button>
+          />
         ))}
       </div>
 
       {isRemote && (
-        <div class="wizard-ssh-input-section">
-          <p class="wizard-sub-label">
-            SSH Command <span class="wizard-required-indicator">*</span>
-          </p>
-          <input
-            class="wizard-input wizard-input-mono"
-            type="text"
-            placeholder="ssh user@gpu-server.example.com"
-            value={d.sshCommand}
-            onInput={(e) => {
-              wizardSetField("sshCommand", e.target.value);
-              setTestStatus("idle");
-              setTestMessage("");
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && wizardCanProceed.value) wizardNext();
-            }}
-            autoComplete="off"
-            autoFocus
-          />
-          <div class="wizard-ssh-test-row">
-            <button
-              class="wizard-btn wizard-btn-secondary wizard-ssh-test-btn"
-              onClick={handleTestSSH}
-              disabled={
-                !isValidSshCommand(d.sshCommand) || testStatus === "testing"
-              }
-            >
-              {testStatus === "testing" && <span class="wizard-ssh-spinner" />}
-              {testStatus === "testing" ? "Testing…" : "Test SSH"}
-            </button>
-            {testMessage && (
-              <div class={`wizard-ssh-test-result ${testStatus}`}>
-                <span class="wizard-ssh-test-icon">
-                  {testStatus === "success" ? "✓" : "✗"}
-                </span>
-                <span class="wizard-ssh-test-message">{testMessage}</span>
-              </div>
-            )}
-          </div>
-        </div>
+        <Section title="SSH connection">
+          <Field
+            label="SSH command"
+            htmlFor="wz-ssh"
+            required
+            hint={<>The same command you'd run in a terminal, e.g. <code>ssh -p 2222 user@gpu-server</code>.</>}
+          >
+            <div class="wz-input-row">
+              <input
+                id="wz-ssh"
+                class="wizard-input wizard-input-mono"
+                type="text"
+                placeholder="ssh user@gpu-server.example.com"
+                value={d.sshCommand}
+                onInput={(e) => {
+                  wizardSetField("sshCommand", e.target.value);
+                  setTestStatus("idle");
+                  setTestMessage("");
+                }}
+                onKeyDown={enterToContinue}
+                autoComplete="off"
+                spellcheck={false}
+                autoFocus
+              />
+              <button
+                type="button"
+                class="wizard-btn wizard-btn-secondary wizard-ssh-test-btn"
+                onClick={handleTestSSH}
+                disabled={
+                  !isValidSshCommand(d.sshCommand) || testStatus === "testing"
+                }
+              >
+                {testStatus === "testing" ? <span class="wizard-ssh-spinner" /> : <Icon name="plug" size={15} />}
+                {testStatus === "testing" ? "Testing…" : "Test connection"}
+              </button>
+            </div>
+          </Field>
+          <Field
+            label="SSH key"
+            htmlFor="wz-ssh-key"
+            hint={
+              sshKeyPath(d.sshCommand)
+                ? "Only this key is offered to the server."
+                : "Uses your SSH config and agent. Pick a key to use just that one."
+            }
+          >
+            <SshKeySelect
+              id="wz-ssh-key"
+              command={d.sshCommand}
+              selectClass="wizard-input"
+              onChange={(cmd) => {
+                wizardSetField("sshCommand", cmd);
+                setTestStatus("idle");
+                setTestMessage("");
+              }}
+            />
+          </Field>
+          {testMessage && (
+            <div class={`wizard-ssh-test-result ${testStatus}`} role="status">
+              <span class="wizard-ssh-test-icon">
+                <Icon name={testStatus === "success" ? "check" : "x"} size={14} />
+              </span>
+              <span class="wizard-ssh-test-message">{testMessage}</span>
+            </div>
+          )}
+        </Section>
       )}
     </div>
   );
@@ -178,18 +333,19 @@ function StepName() {
       .replace(/^-+|-+$/g, "");
   };
 
-  const DEFAULT_BASE = platform.value === "windows" ? "~\\nightflow\\projects\\" : "~/nightflow/projects/";
+  // Remote projects live on the server, so their folder is always "~/…".
+  const DEFAULT_BASE = projectsBase(pathPlatform(d.connectionType, platform.value));
 
   const derivedPath = d.name
     ? `${DEFAULT_BASE}${sanitizeName(d.name)}`
     : DEFAULT_BASE;
 
-  // Auto if path is empty, equals base, or equals the current derived path
-  const pathIsAuto = useRef(
-    !d.projectPath ||
-      d.projectPath === DEFAULT_BASE ||
-      d.projectPath === derivedPath,
-  );
+  // Auto while the path is still a default (in either path style), so going
+  // back and switching between local and remote keeps it in the right style.
+  const pathIsAuto = useRef(isDefaultProjectPath(d.projectPath, d.name));
+  useEffect(() => {
+    if (pathIsAuto.current && d.projectPath !== derivedPath) wizardSetField("projectPath", derivedPath);
+  }, [derivedPath]);
 
   const handleNameInput = (e) => {
     const name = e.target.value;
@@ -214,37 +370,48 @@ function StepName() {
     }
   };
 
-  return (
-    <div>
-      <p class="wizard-step-title">Project Name</p>
-      <p class="wizard-step-desc">Give your project a descriptive name.</p>
-      <input
-        class="wizard-input"
-        type="text"
-        placeholder="e.g. ImageNet Classifier"
-        value={d.name}
-        onInput={handleNameInput}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && wizardCanProceed.value) wizardNext();
-        }}
-        autoComplete="off"
-        autoFocus
-      />
+  const effectivePath = pathIsAuto.current ? derivedPath : d.projectPath;
 
-      <div class="wizard-project-path-section">
-        <p class="wizard-sub-label">
-          Project Path <span class="wizard-optional-indicator">(optional)</span>
-        </p>
+  return (
+    <div class="wz-stack">
+      <Field label="Project name" htmlFor="wz-name" required>
         <input
+          id="wz-name"
+          class="wizard-input wz-input-lg"
+          type="text"
+          placeholder="e.g. ImageNet Classifier"
+          value={d.name}
+          onInput={handleNameInput}
+          onKeyDown={enterToContinue}
+          autoComplete="off"
+          autoFocus
+        />
+      </Field>
+
+      <Field
+        label="Project folder"
+        htmlFor="wz-path"
+        optional
+        hint="Leave blank to use the default location, named after your project."
+      >
+        <input
+          id="wz-path"
           class="wizard-input wizard-input-mono"
           type="text"
           value={pathIsAuto.current ? "" : d.projectPath}
           placeholder={derivedPath}
           onInput={handlePathInput}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && wizardCanProceed.value) wizardNext();
-          }}
+          onKeyDown={enterToContinue}
+          spellcheck={false}
         />
+      </Field>
+
+      <div class="wz-path-preview">
+        <span class="wz-path-preview-icon"><Icon name="folder" size={16} /></span>
+        <span class="wz-path-preview-text">
+          <span class="wz-path-preview-label">Files will be saved to</span>
+          <code>{effectivePath}</code>
+        </span>
       </div>
     </div>
   );
@@ -278,14 +445,14 @@ const TASK_EXAMPLES = {
         width="68"
         height="50"
         rx="6"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.06"
       />
       {/* Stylized photo icon */}
-      <circle cx="48" cy="42" r="6" fill="var(--accent)" opacity="0.18" />
+      <circle cx="48" cy="42" r="6" fill="var(--wz-tone)" opacity="0.18" />
       <polygon
         points="32,68 52,46 72,58 88,48 88,68"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.12"
       />
       <text
@@ -318,9 +485,9 @@ const TASK_EXAMPLES = {
         width="56"
         height="48"
         rx="8"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.08"
-        stroke="var(--accent)"
+        stroke="var(--wz-tone)"
         stroke-width="1.2"
       />
       <text
@@ -329,7 +496,7 @@ const TASK_EXAMPLES = {
         text-anchor="middle"
         font-size="10"
         font-weight="600"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
       >
         Cat
       </text>
@@ -352,7 +519,7 @@ const TASK_EXAMPLES = {
         width="130"
         height="10"
         rx="3"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.08"
       />
       <rect
@@ -361,7 +528,7 @@ const TASK_EXAMPLES = {
         width="124"
         height="10"
         rx="3"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.5"
       />
       <text x="30" y="138" font-size="7" fill="var(--text-muted)">
@@ -373,7 +540,7 @@ const TASK_EXAMPLES = {
         width="130"
         height="10"
         rx="3"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.08"
       />
       <rect
@@ -394,7 +561,7 @@ const TASK_EXAMPLES = {
         width="130"
         height="10"
         rx="3"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.08"
       />
       <rect
@@ -442,7 +609,7 @@ const TASK_EXAMPLES = {
         width="68"
         height="50"
         rx="6"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.06"
       />
       <circle cx="48" cy="48" r="6" fill="#e8a035" opacity="0.2" />
@@ -476,9 +643,9 @@ const TASK_EXAMPLES = {
         width="56"
         height="22"
         rx="11"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.12"
-        stroke="var(--accent)"
+        stroke="var(--wz-tone)"
         stroke-width="1"
       />
       <text
@@ -487,7 +654,7 @@ const TASK_EXAMPLES = {
         text-anchor="middle"
         font-size="8.5"
         font-weight="600"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
       >
         beach
       </text>
@@ -537,7 +704,7 @@ const TASK_EXAMPLES = {
       <path
         d="M152,39 l3,3 l6,-6"
         fill="none"
-        stroke="var(--accent)"
+        stroke="var(--wz-tone)"
         stroke-width="1.5"
         stroke-linecap="round"
         stroke-linejoin="round"
@@ -568,7 +735,7 @@ const TASK_EXAMPLES = {
         width="50"
         height="8"
         rx="2.5"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.4"
       />
       <text x="110" y="130" font-size="7" fill="var(--text-muted)">
@@ -645,87 +812,87 @@ const TASK_EXAMPLES = {
         width="48"
         height="80"
         rx="3"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.07"
-        stroke="var(--accent)"
+        stroke="var(--wz-tone)"
         stroke-width="2"
       />
-      <rect x="28" y="20" width="48" height="14" rx="4" fill="var(--accent)" />
+            {/* Small corner marks */}
+      <line
+        x1="28"
+        y1="26"
+        x2="36"
+        y2="26"
+        stroke="var(--wz-tone)"
+        stroke-width="2.5"
+      />
+      <line
+        x1="28"
+        y1="26"
+        x2="28"
+        y2="34"
+        stroke="var(--wz-tone)"
+        stroke-width="2.5"
+      />
+      <line
+        x1="76"
+        y1="26"
+        x2="68"
+        y2="26"
+        stroke="var(--wz-tone)"
+        stroke-width="2.5"
+      />
+      <line
+        x1="76"
+        y1="26"
+        x2="76"
+        y2="34"
+        stroke="var(--wz-tone)"
+        stroke-width="2.5"
+      />
+      <line
+        x1="28"
+        y1="106"
+        x2="36"
+        y2="106"
+        stroke="var(--wz-tone)"
+        stroke-width="2.5"
+      />
+      <line
+        x1="28"
+        y1="106"
+        x2="28"
+        y2="98"
+        stroke="var(--wz-tone)"
+        stroke-width="2.5"
+      />
+      <line
+        x1="76"
+        y1="106"
+        x2="68"
+        y2="106"
+        stroke="var(--wz-tone)"
+        stroke-width="2.5"
+      />
+      <line
+        x1="76"
+        y1="106"
+        x2="76"
+        y2="98"
+        stroke="var(--wz-tone)"
+        stroke-width="2.5"
+      />
+      <rect x="22" y="18" width="60" height="15" rx="4" fill="var(--wz-tone)" />
       <text
         x="52"
-        y="30"
+        y="29"
         text-anchor="middle"
         font-size="8"
         font-weight="600"
-        fill="white"
+        fill="#0b0b14"
       >
         person 92%
       </text>
-      {/* Small corner marks */}
-      <line
-        x1="28"
-        y1="26"
-        x2="36"
-        y2="26"
-        stroke="var(--accent)"
-        stroke-width="2.5"
-      />
-      <line
-        x1="28"
-        y1="26"
-        x2="28"
-        y2="34"
-        stroke="var(--accent)"
-        stroke-width="2.5"
-      />
-      <line
-        x1="76"
-        y1="26"
-        x2="68"
-        y2="26"
-        stroke="var(--accent)"
-        stroke-width="2.5"
-      />
-      <line
-        x1="76"
-        y1="26"
-        x2="76"
-        y2="34"
-        stroke="var(--accent)"
-        stroke-width="2.5"
-      />
-      <line
-        x1="28"
-        y1="106"
-        x2="36"
-        y2="106"
-        stroke="var(--accent)"
-        stroke-width="2.5"
-      />
-      <line
-        x1="28"
-        y1="106"
-        x2="28"
-        y2="98"
-        stroke="var(--accent)"
-        stroke-width="2.5"
-      />
-      <line
-        x1="76"
-        y1="106"
-        x2="68"
-        y2="106"
-        stroke="var(--accent)"
-        stroke-width="2.5"
-      />
-      <line
-        x1="76"
-        y1="106"
-        x2="76"
-        y2="98"
-        stroke="var(--accent)"
-        stroke-width="2.5"
-      />
       {/* Box B — wide rectangle */}
       <rect
         x="94"
@@ -738,10 +905,74 @@ const TASK_EXAMPLES = {
         stroke="#e8a035"
         stroke-width="2"
       />
-      <rect x="94" y="48" width="38" height="14" rx="4" fill="#e8a035" />
+            <line
+        x1="94"
+        y1="54"
+        x2="102"
+        y2="54"
+        stroke="#e8a035"
+        stroke-width="2.5"
+      />
+      <line
+        x1="94"
+        y1="54"
+        x2="94"
+        y2="62"
+        stroke="#e8a035"
+        stroke-width="2.5"
+      />
+      <line
+        x1="174"
+        y1="54"
+        x2="166"
+        y2="54"
+        stroke="#e8a035"
+        stroke-width="2.5"
+      />
+      <line
+        x1="174"
+        y1="54"
+        x2="174"
+        y2="62"
+        stroke="#e8a035"
+        stroke-width="2.5"
+      />
+      <line
+        x1="94"
+        y1="106"
+        x2="102"
+        y2="106"
+        stroke="#e8a035"
+        stroke-width="2.5"
+      />
+      <line
+        x1="94"
+        y1="106"
+        x2="94"
+        y2="98"
+        stroke="#e8a035"
+        stroke-width="2.5"
+      />
+      <line
+        x1="174"
+        y1="106"
+        x2="166"
+        y2="106"
+        stroke="#e8a035"
+        stroke-width="2.5"
+      />
+      <line
+        x1="174"
+        y1="106"
+        x2="174"
+        y2="98"
+        stroke="#e8a035"
+        stroke-width="2.5"
+      />
+      <rect x="94" y="46" width="48" height="15" rx="4" fill="#e8a035" />
       <text
-        x="113"
-        y="58"
+        x="118"
+        y="57"
         text-anchor="middle"
         font-size="8"
         font-weight="600"
@@ -749,70 +980,6 @@ const TASK_EXAMPLES = {
       >
         car 88%
       </text>
-      <line
-        x1="94"
-        y1="54"
-        x2="102"
-        y2="54"
-        stroke="#e8a035"
-        stroke-width="2.5"
-      />
-      <line
-        x1="94"
-        y1="54"
-        x2="94"
-        y2="62"
-        stroke="#e8a035"
-        stroke-width="2.5"
-      />
-      <line
-        x1="174"
-        y1="54"
-        x2="166"
-        y2="54"
-        stroke="#e8a035"
-        stroke-width="2.5"
-      />
-      <line
-        x1="174"
-        y1="54"
-        x2="174"
-        y2="62"
-        stroke="#e8a035"
-        stroke-width="2.5"
-      />
-      <line
-        x1="94"
-        y1="106"
-        x2="102"
-        y2="106"
-        stroke="#e8a035"
-        stroke-width="2.5"
-      />
-      <line
-        x1="94"
-        y1="106"
-        x2="94"
-        y2="98"
-        stroke="#e8a035"
-        stroke-width="2.5"
-      />
-      <line
-        x1="174"
-        y1="106"
-        x2="166"
-        y2="106"
-        stroke="#e8a035"
-        stroke-width="2.5"
-      />
-      <line
-        x1="174"
-        y1="106"
-        x2="174"
-        y2="98"
-        stroke="#e8a035"
-        stroke-width="2.5"
-      />
       {/* Legend */}
       <rect
         x="30"
@@ -820,7 +987,7 @@ const TASK_EXAMPLES = {
         width="10"
         height="10"
         rx="2"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.5"
       />
       <text x="44" y="159" font-size="8" fill="var(--text-muted)">
@@ -1077,13 +1244,13 @@ const TASK_EXAMPLES = {
         width="52"
         height="78"
         rx="20"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.15"
-        stroke="var(--accent)"
+        stroke="var(--wz-tone)"
         stroke-width="2"
         stroke-dasharray="5 3"
       />
-      <rect x="24" y="18" width="52" height="16" rx="5" fill="var(--accent)" />
+      <rect x="24" y="18" width="52" height="16" rx="5" fill="var(--wz-tone)" />
       <text
         x="50"
         y="29"
@@ -1148,9 +1315,9 @@ const TASK_EXAMPLES = {
         width="12"
         height="12"
         rx="3"
-        fill="var(--accent)"
+        fill="var(--wz-tone)"
         opacity="0.4"
-        stroke="var(--accent)"
+        stroke="var(--wz-tone)"
         stroke-width="1"
       />
       <text
@@ -1222,80 +1389,78 @@ function StepTaskType() {
   const selectedTask = TASK_TYPES.find((t) => t.id === d.taskType);
 
   return (
-    <div>
-      <p class="wizard-step-title">Task Type</p>
-      <p class="wizard-step-desc">
-        What kind of vision task will this project handle?
-      </p>
-      <div class="wizard-task-layout">
-        <div class="wizard-category-list">
+    <div class="wz-stack">
+      <div class="wz-split">
+        <div class="wizard-category-list" role="radiogroup" aria-label="Task type">
           {TASK_TYPES.map((t) => {
             const isDisabled =
               t.id === "Multi-Label Classification" ||
               t.id === "Semantic Segmentation" ||
               t.id === "Instance Segmentation";
             return (
-              <button
+              <Choice
                 key={t.id}
-                class={`wizard-category${d.taskType === t.id ? " selected" : ""}${isDisabled ? " disabled" : ""}`}
-                onClick={
-                  isDisabled
-                    ? undefined
-                    : () => {
-                        wizardSetField("taskType", t.id);
-                        wizardSetField("datasetFormat", "");
-                        wizardSetField("lossFn", "");
-                      }
-                }
+                icon={TASK_ICONS[t.id]}
+                label={t.label}
+                desc={t.desc}
+                selected={d.taskType === t.id}
                 disabled={isDisabled}
-                style={isDisabled ? { opacity: 0.5, cursor: "not-allowed" } : {}}
-              >
-                <span class="wizard-category-name">{t.label}</span>
-                <span class="wizard-category-desc">{t.desc}</span>
-                {isDisabled && (
-                  <span class="wizard-coming-soon-badge">Coming soon</span>
-                )}
-              </button>
+                badge={isDisabled ? "Coming soon" : null}
+                onSelect={() => {
+                  wizardSetField("taskType", t.id);
+                  wizardSetField("datasetFormat", "");
+                  wizardSetField("lossFn", "");
+                }}
+              />
             );
           })}
         </div>
-        {selectedTask && (
-          <div class="wizard-task-preview">
-            {TASK_EXAMPLES[selectedTask.id]}
+        <div class="wz-preview wizard-task-preview">
+          <div class="wizard-structure-header">Example output</div>
+          <div class="wz-preview-art">
+            {selectedTask ? (
+              TASK_EXAMPLES[selectedTask.id]
+            ) : (
+              <p class="wz-preview-empty">Select a task to see what the model will produce.</p>
+            )}
           </div>
-        )}
+        </div>
       </div>
       {isDetection && (
-        <div class="wizard-sub-section">
-          <p class="wizard-sub-label">Detection Architecture</p>
-          <div class="wizard-options-row">
+        <Section title="Detection architecture">
+          <div class="wz-seg" role="radiogroup" aria-label="Detection architecture">
             {DETECTION_ARCHS.map((a) => (
               <button
                 key={a}
-                class={`wizard-option wizard-option-sm${d.detectionArch === a ? " selected" : ""}`}
+                type="button"
+                role="radio"
+                aria-checked={d.detectionArch === a ? "true" : "false"}
+                class={`wz-seg-btn${d.detectionArch === a ? " is-active" : ""}`}
                 onClick={() => wizardSetField("detectionArch", a)}
               >
                 {a.toUpperCase()}
               </button>
             ))}
           </div>
-        </div>
+        </Section>
       )}
       {isSeg && (
-        <div class="wizard-sub-section">
-          <p class="wizard-sub-label">Segmentation Head</p>
-          <div class="wizard-options-row">
+        <Section title="Segmentation head">
+          <div class="wz-seg" role="radiogroup" aria-label="Segmentation head">
             {SEG_HEAD_TYPES.map((h) => (
               <button
                 key={h}
-                class={`wizard-option wizard-option-sm${d.segHeadType === h ? " selected" : ""}`}
+                type="button"
+                role="radio"
+                aria-checked={d.segHeadType === h ? "true" : "false"}
+                class={`wz-seg-btn${d.segHeadType === h ? " is-active" : ""}`}
                 onClick={() => wizardSetField("segHeadType", h)}
               >
                 {h === "deeplabv3plus" ? "DeepLabV3+" : "FCN"}
               </button>
             ))}
           </div>
-        </div>
+        </Section>
       )}
     </div>
   );
@@ -1361,28 +1526,21 @@ function ModelPreview({ category, modelSource }) {
   if (!info || !preview) return null;
 
   return (
-    <div class="wizard-model-preview">
-      <div class="wizard-structure-header">{category} Tier</div>
+    <div class="wz-preview wizard-model-preview">
+      <div class="wizard-structure-header">{category} tier</div>
       {/* Speed vs Accuracy bars */}
       <div class="wizard-model-bars">
-        <div class="wizard-model-bar-row">
-          <span class="wizard-model-bar-label">Speed</span>
-          <div class="wizard-model-bar-track">
-            <div
-              class="wizard-model-bar-fill wizard-model-bar-speed"
-              style={{ width: `${preview.speed}%` }}
-            />
+        {[
+          ["Speed", preview.speed, "wizard-model-bar-speed"],
+          ["Accuracy", preview.accuracy, "wizard-model-bar-acc"],
+        ].map(([label, pct, cls]) => (
+          <div key={label} class="wizard-model-bar-row">
+            <span class="wizard-model-bar-label">{label}</span>
+            <div class="wizard-model-bar-track" role="meter" aria-label={label} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+              <div class={`wizard-model-bar-fill ${cls}`} style={{ width: `${pct}%` }} />
+            </div>
           </div>
-        </div>
-        <div class="wizard-model-bar-row">
-          <span class="wizard-model-bar-label">Accuracy</span>
-          <div class="wizard-model-bar-track">
-            <div
-              class="wizard-model-bar-fill wizard-model-bar-acc"
-              style={{ width: `${preview.accuracy}%` }}
-            />
-          </div>
-        </div>
+        ))}
       </div>
       {/* Stats grid */}
       <div class="wizard-model-stats">
@@ -1407,6 +1565,16 @@ function ModelPreview({ category, modelSource }) {
           <span class="wizard-model-stat-label">Deploy Target</span>
         </div>
       </div>
+      {info.models?.length > 0 && (
+        <div class="wz-model-list">
+          <span class="wizard-structure-sample-label">Includes</span>
+          <div class="wz-chips">
+            {info.models.slice(0, 4).map((m) => (
+              <code key={m} class="wz-chip" title={m}>{m}</code>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1419,31 +1587,29 @@ function StepModelCategory() {
   const categories = Object.keys(source);
 
   return (
-    <div>
-      <p class="wizard-step-title">Model Category</p>
-      <p class="wizard-step-desc">
-        Choose a model tier based on your deployment target.
-      </p>
-      <div class="wizard-model-layout">
-        <div class="wizard-category-list">
-          {categories.map((cat) => {
-            const info = source[cat];
-            return (
-              <button
-                key={cat}
-                class={`wizard-category${d.modelCategory === cat ? " selected" : ""}`}
-                onClick={() => wizardSetField("modelCategory", cat)}
-              >
-                <span class="wizard-category-name">{cat}</span>
-                <span class="wizard-category-desc">{info.desc}</span>
-              </button>
-            );
-          })}
-        </div>
-        {d.modelCategory && (
-          <ModelPreview category={d.modelCategory} modelSource={source} />
-        )}
+    <div class="wz-split">
+      <div class="wizard-category-list" role="radiogroup" aria-label="Backbone tier">
+        {categories.map((cat) => (
+          <Choice
+            key={cat}
+            icon={TIER_ICONS[cat] || "cpu"}
+            label={cat}
+            desc={source[cat].desc}
+            selected={d.modelCategory === cat}
+            onSelect={() => wizardSetField("modelCategory", cat)}
+          />
+        ))}
       </div>
+      {d.modelCategory ? (
+        <ModelPreview category={d.modelCategory} modelSource={source} />
+      ) : (
+        <div class="wz-preview">
+          <div class="wizard-structure-header">Tier details</div>
+          <div class="wz-preview-art">
+            <p class="wz-preview-empty">Select a tier to compare speed, accuracy and size.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1733,8 +1899,8 @@ function StructurePreview({ taskType, format }) {
   if (!info) return null;
 
   return (
-    <div class="wizard-structure-preview">
-      <div class="wizard-structure-header">Directory Structure</div>
+    <div class="wz-preview wizard-structure-preview">
+      <div class="wizard-structure-header">Expected layout</div>
       <div class="wizard-structure-tree">
         {info.tree.map((item, i) => (
           <div
@@ -1843,129 +2009,166 @@ function StepDataset() {
     wizardSetField("testPath", e.target.value);
   };
 
+  const winPath = platform.value === "windows";
+  const classNames = Array.isArray(d.classNames) ? d.classNames : [];
+
   return (
-    <div>
-      <p class="wizard-step-title">Dataset Format</p>
-      <p class="wizard-step-desc">How is your training data organized?</p>
-      <div class="wizard-dataset-layout">
-        <div class="wizard-category-list">
+    <div class="wz-stack">
+      <div class="wz-split">
+        <div class="wizard-category-list" role="radiogroup" aria-label="Dataset format">
           {formats.map((f) => (
-            <button
+            <Choice
               key={f.id}
-              class={`wizard-category${d.datasetFormat === f.id ? " selected" : ""}`}
-              onClick={() => {
+              icon={FORMAT_ICONS[f.id] || "folder"}
+              label={f.label}
+              desc={f.desc}
+              selected={d.datasetFormat === f.id}
+              onSelect={() => {
                 wizardSetField("datasetFormat", f.id);
                 // Clear validation errors when changing format
                 trainPathError.value = "";
                 valPathError.value = "";
                 testPathError.value = "";
               }}
-            >
-              <span class="wizard-category-name">{f.label}</span>
-              <span class="wizard-category-desc">{f.desc}</span>
-            </button>
+            />
           ))}
         </div>
-        {d.datasetFormat && (
+        {d.datasetFormat ? (
           <StructurePreview taskType={d.taskType} format={d.datasetFormat} />
+        ) : (
+          <div class="wz-preview">
+            <div class="wizard-structure-header">Expected layout</div>
+            <div class="wz-preview-art">
+              <p class="wz-preview-empty">Select a format to see how files should be organised.</p>
+            </div>
+          </div>
         )}
       </div>
-      {needsFolderPath && (
-        <div class="wizard-folder-path-section">
-          <p class="wizard-sub-label">
-            Dataset Folder Path <span class="wizard-required-indicator">*</span>
-          </p>
-          <input
-            class="wizard-input wizard-input-mono"
-            type="text"
-            placeholder={platform.value === "windows" ? "C:\\path\\to\\dataset" : "/path/to/dataset"}
-            value={d.folderPath}
-            onInput={handleFolderPathInput}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && wizardCanProceed.value) wizardNext();
-            }}
-          />
-        </div>
-      )}
-      {!isDetection && <div class="wizard-folder-path-section">
-        <p class="wizard-sub-label">
-          Number of Classes <span class="wizard-required-indicator">*</span>
-        </p>
-        <input
-          class="wizard-input"
-          type="number"
-          min="2"
-          placeholder="e.g. 10"
-          value={d.numClasses}
-          onInput={(e) =>
-            wizardSetField(
-              "numClasses",
-              e.target.value === "" ? "" : Number(e.target.value),
+
+      {d.datasetFormat && (
+        <Section
+          title="Location"
+          aside={
+            classNames.length > 0 && (
+              <span class="wz-detected" title={classNames.join(", ")}>
+                <Icon name="check" size={13} />
+                {classNames.length} {classNames.length === 1 ? "class" : "classes"} found
+              </span>
             )
           }
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && wizardCanProceed.value) wizardNext();
-          }}
-        />
-      </div>}
-      {isCsvOrJsonl && (
-        <div class="wizard-folder-path-section">
-          <p class="wizard-sub-label">
-            Image Folder <span class="wizard-optional-indicator">(optional)</span>
-          </p>
-          <input
-            class="wizard-input wizard-input-mono"
-            type="text"
-            placeholder={platform.value === "windows" ? "C:\\path\\to\\images" : "/path/to/images"}
-            value={d.imageFolderPath}
-            onInput={(e) => wizardSetField("imageFolderPath", e.target.value)}
-          />
-        </div>
+        >
+          <div class="wz-grid">
+            {needsFolderPath && (
+              <Field label="Dataset folder" htmlFor="wz-folder" required wide>
+                <input
+                  id="wz-folder"
+                  class="wizard-input wizard-input-mono"
+                  type="text"
+                  placeholder={winPath ? "C:\\path\\to\\dataset" : "/path/to/dataset"}
+                  value={d.folderPath}
+                  onInput={handleFolderPathInput}
+                  onKeyDown={enterToContinue}
+                  spellcheck={false}
+                />
+              </Field>
+            )}
+            {isCsvOrJsonl && (
+              <>
+                <Field label="Train file" htmlFor="wz-train" required wide>
+                  <input
+                    id="wz-train"
+                    class="wizard-input wizard-input-mono"
+                    type="text"
+                    placeholder={winPath ? `C:\\path\\to\\train.${fileExtension}` : `/path/to/train.${fileExtension}`}
+                    value={d.trainPath}
+                    onInput={handleTrainPathInput}
+                    spellcheck={false}
+                  />
+                </Field>
+                <Field label="Validation file" htmlFor="wz-val" optional>
+                  <input
+                    id="wz-val"
+                    class="wizard-input wizard-input-mono"
+                    type="text"
+                    placeholder={winPath ? `C:\\path\\to\\val.${fileExtension}` : `/path/to/val.${fileExtension}`}
+                    value={d.valPath}
+                    onInput={handleValPathInput}
+                    spellcheck={false}
+                  />
+                </Field>
+                <Field label="Test file" htmlFor="wz-test" optional>
+                  <input
+                    id="wz-test"
+                    class="wizard-input wizard-input-mono"
+                    type="text"
+                    placeholder={winPath ? `C:\\path\\to\\test.${fileExtension}` : `/path/to/test.${fileExtension}`}
+                    value={d.testPath}
+                    onInput={handleTestPathInput}
+                    onKeyDown={enterToContinue}
+                    spellcheck={false}
+                  />
+                </Field>
+                <Field
+                  label="Image folder"
+                  htmlFor="wz-images"
+                  optional
+                  wide
+                  hint="Base folder that relative image paths in your files are resolved against."
+                >
+                  <input
+                    id="wz-images"
+                    class="wizard-input wizard-input-mono"
+                    type="text"
+                    placeholder={winPath ? "C:\\path\\to\\images" : "/path/to/images"}
+                    value={d.imageFolderPath}
+                    onInput={(e) => wizardSetField("imageFolderPath", e.target.value)}
+                    spellcheck={false}
+                  />
+                </Field>
+              </>
+            )}
+            {!isDetection && (
+              <Field
+                label="Number of classes"
+                htmlFor="wz-classes"
+                required
+                hint={classNames.length >= 2 ? "Filled in from your dataset. Adjust if needed." : "How many distinct labels your dataset has."}
+              >
+                <input
+                  id="wz-classes"
+                  class="wizard-input"
+                  type="number"
+                  min="2"
+                  placeholder="e.g. 10"
+                  value={d.numClasses}
+                  onInput={(e) =>
+                    wizardSetField(
+                      "numClasses",
+                      e.target.value === "" ? "" : Number(e.target.value),
+                    )
+                  }
+                  onKeyDown={enterToContinue}
+                />
+              </Field>
+            )}
+          </div>
+          {classNames.length > 0 && (
+            <div class="wz-chips wz-class-chips">
+              {classNames.slice(0, 12).map((c) => (
+                <span key={c} class="wz-chip">{c}</span>
+              ))}
+              {classNames.length > 12 && (
+                <span class="wz-chip wz-chip--more">+{classNames.length - 12} more</span>
+              )}
+            </div>
+          )}
+        </Section>
       )}
-      <CsvColumnFields value={d} onChange={wizardSetField} />
-      {isCsvOrJsonl && (
-        <div class="wizard-file-paths-section">
-          <p class="wizard-sub-label">Dataset File Paths</p>
-          <div class="wizard-file-path-group">
-            <label class="wizard-file-path-label">
-              Train <span class="wizard-required-indicator">*</span>
-            </label>
-            <input
-              class="wizard-input wizard-input-mono"
-              type="text"
-              placeholder={platform.value === "windows" ? `C:\\path\\to\\train.${fileExtension}` : `/path/to/train.${fileExtension}`}
-              value={d.trainPath}
-              onInput={handleTrainPathInput}
-            />
-          </div>
-          <div class="wizard-file-path-group">
-            <label class="wizard-file-path-label">
-              Val <span class="wizard-optional-indicator">(optional)</span>
-            </label>
-            <input
-              class="wizard-input wizard-input-mono"
-              type="text"
-              placeholder={platform.value === "windows" ? `C:\\path\\to\\val.${fileExtension}` : `/path/to/val.${fileExtension}`}
-              value={d.valPath}
-              onInput={handleValPathInput}
-            />
-          </div>
-          <div class="wizard-file-path-group">
-            <label class="wizard-file-path-label">
-              Test <span class="wizard-optional-indicator">(optional)</span>
-            </label>
-            <input
-              class="wizard-input wizard-input-mono"
-              type="text"
-              placeholder={platform.value === "windows" ? `C:\\path\\to\\test.${fileExtension}` : `/path/to/test.${fileExtension}`}
-              value={d.testPath}
-              onInput={handleTestPathInput}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && wizardCanProceed.value) wizardNext();
-              }}
-            />
-          </div>
-        </div>
+
+      {d.datasetFormat === "CSV" && (
+        <Section title="CSV columns">
+          <CsvColumnFields value={d} onChange={wizardSetField} />
+        </Section>
       )}
     </div>
   );
@@ -1975,130 +2178,120 @@ function StepDataset() {
 
 function StepAdvanced() {
   const d = wizardData.value;
+  const isDetection = d.taskType === "Object Detection";
 
   const numField = (field) => (e) =>
     wizardSetField(field, e.target.value === "" ? "" : Number(e.target.value));
 
   return (
-    <div>
-      <p class="wizard-step-title">Advanced Settings</p>
-      <p class="wizard-step-desc">
-        Optional. Fine-tune training here, or leave these blank to use recommended defaults.
-      </p>
-      <div class="settings-card">
-        <div class="settings-card-row settings-row-grid">
-          <label class="settings-field">
-            <span class="settings-label">Max Epochs</span>
-            <span class="settings-hint">Number of training epochs</span>
+    <div class="wz-stack">
+      <Section title="Schedule">
+        <div class="wz-grid">
+          <Field label="Max epochs" htmlFor="wz-epochs" hint="Full passes over the training set.">
             <input
-              class="settings-input"
+              id="wz-epochs"
+              class="wizard-input"
               type="number"
               min="1"
+              placeholder="10"
               value={d.maxEpochs}
               onInput={numField("maxEpochs")}
             />
-          </label>
-          <label class="settings-field">
-            <span class="settings-label">Learning Rate</span>
-            <span class="settings-hint">Leave empty for AutoTimm default</span>
+          </Field>
+          <Field label="Learning rate" htmlFor="wz-lr" hint="Leave empty for the AutoTimm default.">
             <input
-              class="settings-input"
+              id="wz-lr"
+              class="wizard-input"
               type="number"
               step="any"
               placeholder="auto"
               value={d.learningRate}
               onInput={numField("learningRate")}
             />
-          </label>
-        </div>
-        <div class="settings-card-divider" />
-        <div class="settings-card-row settings-row-grid">
-          <label class="settings-field">
-            <span class="settings-label">Batch Size</span>
-            <span class="settings-hint">Samples per training step</span>
+          </Field>
+          <Field label="Batch size" htmlFor="wz-batch" hint="Samples per training step.">
             <input
-              class="settings-input"
+              id="wz-batch"
+              class="wizard-input"
               type="number"
               min="1"
               placeholder="auto"
               value={d.batchSize}
               onInput={numField("batchSize")}
             />
-          </label>
-          <label class="settings-field">
-            <span class="settings-label">Optimizer</span>
-            <span class="settings-hint">Optimization algorithm</span>
-            <div class="settings-select-wrap">
-              <select
-                class="settings-select"
-                value={d.optimizer}
-                onChange={(e) => wizardSetField("optimizer", e.target.value)}
-              >
-                <option value="">Auto (default)</option>
-                <option value="adamw">AdamW</option>
-                <option value="adam">Adam</option>
-                <option value="sgd">SGD</option>
-              </select>
-              <span class="settings-select-chevron" />
-            </div>
-          </label>
+          </Field>
+          <Field label="Optimizer" htmlFor="wz-opt" hint="Optimisation algorithm.">
+            <select
+              id="wz-opt"
+              class="wizard-input"
+              value={d.optimizer}
+              onChange={(e) => wizardSetField("optimizer", e.target.value)}
+            >
+              <option value="">Auto (default)</option>
+              <option value="adamw">AdamW</option>
+              <option value="adam">Adam</option>
+              <option value="sgd">SGD</option>
+            </select>
+          </Field>
         </div>
-        <div class="settings-card-divider" />
-        <div class="settings-card-row settings-row-between">
-          <div>
-            <div class="settings-label">Early Stopping</div>
-            <div class="settings-desc">Halt training after patience epochs with no improvement</div>
+      </Section>
+
+      <Section title="Early stopping">
+        <div class={`wz-toggle${d.earlyStopping ? " is-on" : ""}`}>
+          <div class="wz-toggle-text">
+            <span class="wz-label" id="wz-es-label">Stop when progress stalls</span>
+            <p class="wz-hint">Halt training after a number of epochs with no improvement.</p>
           </div>
           <button
-            class="settings-theme-btn"
+            type="button"
+            role="switch"
+            aria-checked={d.earlyStopping ? "true" : "false"}
+            aria-labelledby="wz-es-label"
+            class={`wz-switch${d.earlyStopping ? " on" : ""}`}
             onClick={() => wizardSetField("earlyStopping", !d.earlyStopping)}
           >
-            {d.earlyStopping ? "On" : "Off"}
+            <span class="wz-switch-thumb" />
           </button>
         </div>
         {d.earlyStopping && (
-          <>
-            <div class="settings-card-divider" />
-            <div class="settings-card-row settings-row-grid">
-              <label class="settings-field">
-                <span class="settings-label">Monitor Metric</span>
-                <span class="settings-hint">Metric to watch for improvement</span>
-                <div class="settings-select-wrap">
-                  <select
-                    class="settings-select"
-                    value={d.taskType === "Object Detection" ? "val/map" : d.earlyStoppingMonitor}
-                    disabled={d.taskType === "Object Detection"}
-                    onChange={(e) => wizardSetField("earlyStoppingMonitor", e.target.value)}
-                  >
-                    {d.taskType === "Object Detection" ? (
-                      // Detection logs no validation loss or accuracy.
-                      <option value="val/map">Validation mAP</option>
-                    ) : (
-                      <>
-                        <option value="val/loss">Validation Loss</option>
-                        <option value="val/accuracy">Validation Accuracy</option>
-                      </>
-                    )}
-                  </select>
-                  <span class="settings-select-chevron" />
-                </div>
-              </label>
-              <label class="settings-field">
-                <span class="settings-label">Patience</span>
-                <span class="settings-hint">Epochs to wait before stopping (default 10)</span>
-                <input
-                  class="settings-input"
-                  type="number"
-                  min="1"
-                  placeholder="10"
-                  value={d.earlyStoppingPatience}
-                  onInput={numField("earlyStoppingPatience")}
-                />
-              </label>
-            </div>
-          </>
+          <div class="wz-grid">
+            <Field
+              label="Monitor metric"
+              htmlFor="wz-monitor"
+              hint={isDetection ? "Detection is monitored on validation mAP." : "Metric to watch for improvement."}
+            >
+              <select
+                id="wz-monitor"
+                class="wizard-input"
+                value={isDetection ? "val/map" : d.earlyStoppingMonitor}
+                disabled={isDetection}
+                onChange={(e) => wizardSetField("earlyStoppingMonitor", e.target.value)}
+              >
+                {isDetection ? (
+                  // Detection logs no validation loss or accuracy.
+                  <option value="val/map">Validation mAP</option>
+                ) : (
+                  <>
+                    <option value="val/loss">Validation loss</option>
+                    <option value="val/accuracy">Validation accuracy</option>
+                  </>
+                )}
+              </select>
+            </Field>
+            <Field label="Patience" htmlFor="wz-patience" hint="Epochs to wait before stopping.">
+              <input
+                id="wz-patience"
+                class="wizard-input"
+                type="number"
+                min="1"
+                placeholder="10"
+                value={d.earlyStoppingPatience}
+                onInput={numField("earlyStoppingPatience")}
+              />
+            </Field>
+          </div>
         )}
-      </div>
+      </Section>
     </div>
   );
 }
@@ -2108,49 +2301,104 @@ function StepAdvanced() {
 function StepConfirm() {
   const d = wizardData.value;
   const isCsvOrJsonl = d.datasetFormat === "CSV" || d.datasetFormat === "JSONL";
+  const isRemote = d.connectionType === "remote";
 
-  const rows = [
-    ["SSH Command", d.sshCommand],
-    ["Project Name", d.name],
-    d.projectPath ? ["Project Path", d.projectPath] : null,
-    ["Task Type", d.taskType],
-    d.taskType === "Object Detection"
-      ? ["Detection Arch", d.detectionArch.toUpperCase()]
-      : null,
-    d.taskType === "Semantic Segmentation"
-      ? ["Seg Head", d.segHeadType === "deeplabv3plus" ? "DeepLabV3+" : "FCN"]
-      : null,
-    ["Model Category", d.modelCategory],
-    ["Dataset Format", d.datasetFormat],
-    d.numClasses ? ["Number of Classes", d.numClasses] : null,
-    d.datasetFormat === "Folder" && d.folderPath
-      ? ["Folder Path", d.folderPath]
-      : null,
-    isCsvOrJsonl && d.imageFolderPath ? ["Image Folder", d.imageFolderPath] : null,
-    d.datasetFormat === "CSV" && d.imageColumn ? ["Image path column", d.imageColumn] : null,
-    d.datasetFormat === "CSV" && (d.labelColumns || d.labelColumn) ? ["Label column(s)", d.taskType === "Multi-Label Classification" ? d.labelColumns : d.labelColumn] : null,
-    isCsvOrJsonl && d.trainPath ? ["Train Path", d.trainPath] : null,
-    isCsvOrJsonl && d.valPath ? ["Val Path", d.valPath] : null,
-    isCsvOrJsonl && d.testPath ? ["Test Path", d.testPath] : null,
-    ["Max Epochs", d.maxEpochs || 10],
-    d.learningRate !== "" ? ["Learning Rate", d.learningRate] : null,
-    d.batchSize !== "" ? ["Batch Size", d.batchSize] : null,
-    d.optimizer ? ["Optimizer", d.optimizer] : null,
-    ["Early Stopping", d.earlyStopping ? `On (patience ${d.earlyStoppingPatience || 10})` : "Off"],
-  ].filter(Boolean);
+  const groups = [
+    {
+      title: "Connection",
+      step: 0,
+      rows: [
+        [isRemote ? "SSH command" : "Runs on", isRemote ? d.sshCommand : "This machine", isRemote],
+        isRemote ? ["SSH key", sshKeyPath(d.sshCommand) ? sshKeyPath(d.sshCommand).split(/[\\/]/).pop() : "SSH config & agent", !!sshKeyPath(d.sshCommand)] : null,
+      ],
+    },
+    {
+      title: "Project",
+      step: 1,
+      rows: [
+        ["Name", d.name],
+        d.projectPath ? ["Folder", d.projectPath, true] : null,
+      ],
+    },
+    {
+      title: "Model",
+      step: 2,
+      rows: [
+        ["Task", d.taskType],
+        d.taskType === "Object Detection" ? ["Architecture", d.detectionArch.toUpperCase()] : null,
+        d.taskType === "Semantic Segmentation"
+          ? ["Segmentation head", d.segHeadType === "deeplabv3plus" ? "DeepLabV3+" : "FCN"]
+          : null,
+        ["Backbone tier", d.modelCategory],
+      ],
+    },
+    {
+      title: "Dataset",
+      step: 4,
+      rows: [
+        ["Format", d.datasetFormat],
+        d.numClasses ? ["Classes", d.numClasses] : null,
+        !isCsvOrJsonl && d.folderPath ? ["Folder", d.folderPath, true] : null,
+        isCsvOrJsonl && d.trainPath ? ["Train", d.trainPath, true] : null,
+        isCsvOrJsonl && d.valPath ? ["Validation", d.valPath, true] : null,
+        isCsvOrJsonl && d.testPath ? ["Test", d.testPath, true] : null,
+        isCsvOrJsonl && d.imageFolderPath ? ["Image folder", d.imageFolderPath, true] : null,
+        d.datasetFormat === "CSV" && d.imageColumn ? ["Image column", d.imageColumn, true] : null,
+        d.datasetFormat === "CSV" && (d.labelColumns || d.labelColumn)
+          ? ["Label column(s)", d.taskType === "Multi-Label Classification" ? d.labelColumns : d.labelColumn, true]
+          : null,
+      ],
+    },
+    {
+      title: "Training",
+      step: 5,
+      rows: [
+        ["Max epochs", d.maxEpochs || 10],
+        ["Learning rate", d.learningRate !== "" ? d.learningRate : "Auto"],
+        ["Batch size", d.batchSize !== "" ? d.batchSize : "Auto"],
+        ["Optimizer", d.optimizer ? d.optimizer.toUpperCase().replace("ADAMW", "AdamW").replace("ADAM", "Adam") : "Auto"],
+        ["Early stopping", d.earlyStopping ? `On · patience ${d.earlyStoppingPatience || 10}` : "Off"],
+      ],
+    },
+  ];
 
   return (
-    <div>
-      <p class="wizard-step-title">Confirm Project</p>
-      <p class="wizard-step-desc">
-        Review your settings before creating the project.
-      </p>
-      <div class="wizard-confirm-table">
-        {rows.map(([label, value]) => (
-          <div key={label} class="wizard-confirm-row">
-            <span class="wizard-confirm-label">{label}</span>
-            <span class="wizard-confirm-value">{value}</span>
+    <div class="wz-stack">
+      <div class="wz-summary">
+        <span class="wz-summary-icon">
+          <Icon name={TASK_ICONS[d.taskType] || "scan"} size={22} />
+        </span>
+        <div class="wz-summary-text">
+          <span class="wz-summary-name">{d.name}</span>
+          <div class="wz-chips">
+            <span class="wz-chip">{d.taskType}</span>
+            <span class="wz-chip">{d.modelCategory}</span>
+            <span class="wz-chip">{d.datasetFormat}</span>
+            <span class="wz-chip">{isRemote ? "Remote" : "Local"}</span>
           </div>
+        </div>
+      </div>
+
+      <div class="wz-review">
+        {groups.map((g) => (
+          <section key={g.title} class="wz-review-group">
+            <div class="wz-review-head">
+              <h3>{g.title}</h3>
+              <button type="button" class="wz-link" onClick={() => (wizardStep.value = g.step)}>
+                Edit
+              </button>
+            </div>
+            <dl class="wizard-confirm-table">
+              {g.rows.filter(Boolean).map(([label, value, mono]) => (
+                <div key={label} class="wizard-confirm-row">
+                  <dt class="wizard-confirm-label">{label}</dt>
+                  <dd class={`wizard-confirm-value${mono ? " is-mono" : ""}`} title={String(value)}>
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
         ))}
       </div>
     </div>
@@ -2169,60 +2417,192 @@ const steps = [
   StepConfirm,
 ];
 
+/** One-line answer shown under each completed step in the rail. */
+function stepSummary(i, d) {
+  switch (i) {
+    case 0:
+      return d.connectionType === "remote" ? (d.sshCommand.trim() ? sshHost(d.sshCommand) : "Remote") : "This machine";
+    case 1:
+      return d.name.trim();
+    case 2:
+      return d.taskType;
+    case 3:
+      return d.modelCategory;
+    case 4:
+      return d.datasetFormat;
+    case 5:
+      return d.learningRate !== "" || d.batchSize !== "" || d.optimizer ? "Custom" : "Defaults";
+    default:
+      return "";
+  }
+}
+
 // ── Wizard Shell ──
 
 export function CreateProjectWizard() {
   if (!wizardOpen.value) return null;
+  return <WizardDialog />;
+}
 
+function WizardDialog() {
   const step = wizardStep.value;
+  const d = wizardData.value;
   const isLast = step === STEP_COUNT - 1;
   const StepComponent = steps[step];
+  const meta = STEP_META[step];
+  const progress = Math.round((step / (STEP_COUNT - 1)) * 100);
 
   useEffect(() => {
     maybeStartWizardTutorial();
   }, []);
+  // Importing an export is the other way to start a project.
+  const [importFile, setImportFile] = useState(null);
+  const [importError, setImportError] = useState("");
+  const [picking, setPicking] = useState(false);
+  // While the Import dialog is open, Escape belongs to it.
+  useEscape(!importFile, closeWizard);
+
+  async function pickImport() {
+    setImportError("");
+    setPicking(true);
+    try {
+      const file = await chooseImportFile();
+      if (file) setImportFile(file);
+    } catch (e) {
+      setImportError(e?.message || String(e));
+    } finally {
+      setPicking(false);
+    }
+  }
+
+  const importButton = (extraClass = "") => (
+    <button type="button" class={`wz-import-btn${extraClass}`} onClick={pickImport} disabled={picking}>
+      <Icon name="download" size={15} />
+      {picking ? "Opening…" : "Import a project"}
+    </button>
+  );
 
   return (
     <div class="wizard-overlay">
-      <div class="wizard-card wizard-card-wide">
-        <div class="wizard-header">
-          <h2>New Project</h2>
-          <span class="wizard-step-counter">
-            {step + 1} / {STEP_COUNT}
-          </span>
-          <button class="wizard-close-btn" onClick={closeWizard} aria-label="Close">
-            &times;
-          </button>
-        </div>
-        <div class="wizard-dots">
-          {Array.from({ length: STEP_COUNT }, (_, i) => (
-            <div
-              key={i}
-              class={`wizard-dot${i <= step ? " active" : ""}`}
-              title={STEP_LABELS[i]}
-            />
-          ))}
-        </div>
-        <WizardTip stepIndex={step} />
-        <div class="wizard-body">
-          <StepComponent />
-        </div>
-        <div class="wizard-footer">
-          <button
-            class="wizard-btn wizard-btn-secondary"
-            onClick={step === 0 ? closeWizard : wizardBack}
-          >
-            {step === 0 ? "Cancel" : "Back"}
-          </button>
-          <button
-            class="wizard-btn wizard-btn-primary"
-            disabled={!wizardCanProceed.value}
-            onClick={isLast ? wizardCreate : wizardNext}
-          >
-            {isLast ? "Create" : "Next"}
-          </button>
-        </div>
+      <div
+        class="wizard-card wz"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wz-title"
+        aria-describedby="wz-desc"
+      >
+        <aside class="wz-rail">
+          <div class="wz-brand">
+            <span class="wz-brand-mark">
+              <Icon name="layers" size={18} />
+            </span>
+            <div>
+              <div class="wz-brand-title">New project</div>
+              <div class="wz-brand-sub">{STEP_COUNT} quick steps</div>
+            </div>
+          </div>
+
+          <ol class="wz-steps">
+            {STEP_LABELS.map((label, i) => {
+              const state = i < step ? "is-done" : i === step ? "is-current" : "is-upcoming";
+              const summary = i < step ? stepSummary(i, d) : "";
+              return (
+                <li key={label} class={state}>
+                  <button
+                    type="button"
+                    class="wz-step"
+                    disabled={i >= step}
+                    aria-current={i === step ? "step" : undefined}
+                    onClick={() => (wizardStep.value = i)}
+                  >
+                    <span class="wz-step-dot">
+                      {i < step ? <Icon name="check" size={13} /> : i + 1}
+                    </span>
+                    <span class="wz-step-text">
+                      <span class="wz-step-label">{label}</span>
+                      {summary && <span class="wz-step-summary">{summary}</span>}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+
+          <div class="wz-rail-foot">
+            <div class="wz-import">
+              <span class="wz-import-text">Have an export from NightFlow?</span>
+              {importButton()}
+              {importError && <span class="wz-import-error" role="alert">{importError}</span>}
+            </div>
+            <div class="wz-progress" aria-hidden="true">
+              <div class="wz-progress-fill" style={{ width: `${progress}%` }} />
+            </div>
+            <span>{progress}% complete</span>
+          </div>
+        </aside>
+
+        <section class="wz-main">
+          <header class="wz-head">
+            <span class="wz-head-icon">
+              <Icon name={meta.icon} size={22} />
+            </span>
+            <div class="wz-head-text">
+              <span class="wz-eyebrow">
+                Step {step + 1} of {STEP_COUNT} · {STEP_LABELS[step]}
+              </span>
+              <h2 id="wz-title">{meta.title}</h2>
+              <p id="wz-desc">{meta.desc}</p>
+            </div>
+            <button class="wizard-close-btn" onClick={closeWizard} aria-label="Close" title="Close (Esc)">
+              <Icon name="x" size={16} />
+            </button>
+            <div class="wz-head-progress" aria-hidden="true">
+              <div class="wz-progress-fill" style={{ width: `${progress}%` }} />
+            </div>
+          </header>
+
+          <div class="wizard-body">
+            {importError && <p class="wz-import-error wz-import-error--body" role="alert">{importError}</p>}
+            <WizardTip stepIndex={step} />
+            <div class="wz-step-content" key={step}>
+              <StepComponent />
+            </div>
+          </div>
+
+          <footer class="wizard-footer">
+            <button
+              type="button"
+              class="wizard-btn wizard-btn-secondary"
+              onClick={step === 0 ? closeWizard : wizardBack}
+            >
+              {step !== 0 && <Icon name="arrowLeft" size={15} />}
+              {step === 0 ? "Cancel" : "Back"}
+            </button>
+            {/* Narrow windows hide the rail; offer import here instead. */}
+            {importButton(" wz-import-btn--footer")}
+            <button
+              type="button"
+              class="wizard-btn wizard-btn-primary"
+              disabled={!wizardCanProceed.value}
+              onClick={isLast ? wizardCreate : wizardNext}
+            >
+              {isLast ? "Create project" : "Continue"}
+              <Icon name={isLast ? "check" : "arrowRight"} size={15} />
+            </button>
+          </footer>
+        </section>
       </div>
+      {importFile && (
+        <ImportDialog
+          file={importFile}
+          project={null}
+          onClose={() => setImportFile(null)}
+          onImported={() => {
+            setImportFile(null);
+            closeWizard();
+          }}
+        />
+      )}
     </div>
   );
 }

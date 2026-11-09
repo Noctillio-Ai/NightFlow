@@ -10,6 +10,7 @@ mod ssh;
 mod synclog;
 mod system;
 mod training;
+mod transfer;
 mod updater;
 
 use std::collections::HashMap;
@@ -183,6 +184,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyState {
             sessions: Mutex::new(HashMap::new()),
         })
@@ -278,7 +280,16 @@ fn main() {
             fs::get_cwd,
             fs::check_path_exists,
             ssh::ssh_check_path,
-            ssh::list_ssh_keys,
+            ssh::scan_ssh_keys,
+            ssh::inspect_ssh_key,
+            ssh::generate_ssh_key,
+            transfer::full_export_plan,
+            transfer::full_export,
+            transfer::cancel_transfer,
+            transfer::write_transfer_json,
+            transfer::read_transfer_file,
+            transfer::import_archive_files,
+            transfer::local_paths_exist,
             env::ensure_uv,
             env::ssh_ensure_uv,
             env::check_conda,

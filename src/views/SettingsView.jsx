@@ -1,6 +1,14 @@
 import { CsvColumnFields } from "../components/CsvColumnFields.jsx";
+import { showError } from "../state/dialogs.js";
+import { Dialog, ConfirmPhrase, phraseMatches } from "../components/Dialog.jsx";
+import { ExportDialog, ImportDialog } from "../components/ProjectTransfer.jsx";
+import { chooseImportFile } from "../state/transfer.js";
+import { SshKeySelect, SshKeysManager } from "../components/SshKeys.jsx";
+import { sshKeyPath } from "../utils/sshCommand.js";
+import { projectsBase, pathPlatform, isDefaultProjectPath, defaultProjectPath } from "../utils/projectPaths.js";
 import { useState, useEffect, useRef, useContext } from "preact/hooks";
-import { createContext } from "preact";
+import { createContext, toChildArray, cloneElement, Fragment } from "preact";
+import { layoutTiles } from "../utils/settingsGrid.js";
 import { signal } from "@preact/signals";
 import { invoke } from "@tauri-apps/api/core";
 import { validateTrainingProject } from "../utils/configBuilder.js";
@@ -9,7 +17,6 @@ import {
   currentProject,
   updateProject,
   openDeleteDialog,
-  addProject,
   MODEL_CATEGORIES,
   YOLOX_MODEL_CATEGORIES,
   DETECTION_MODEL_CATEGORIES,
@@ -19,11 +26,10 @@ import {
   SEG_HEAD_TYPES,
 } from "../state/projects.js";
 import { sshConnected, syncConfig, platform, requireResync } from "../state/dashboard.js";
-import { allRuns, loadRuns } from "../state/experiments.js";
+import { allRuns } from "../state/experiments.js";
 import { DeleteProjectDialog } from "../components/DeleteProjectDialog.jsx";
-import { clearAllData, saveRun } from "../db/database.js";
-import { downloadFile } from "../utils/exportRuns.js";
-import { projectList } from "../state/projects.js";
+import { clearAllData } from "../db/database.js";
+import { projectList, currentProjectId } from "../state/projects.js";
 import { navigate } from "../state/router.js";
 import { startTutorial } from "../state/tutorial.js";
 
@@ -74,7 +80,8 @@ function isDirty(draft, source) {
   return false;
 }
 
-const pathBase = () => platform.value === "windows" ? "~\\nightflow\\projects\\" : "~/nightflow/projects/";
+/** Default projects folder in the style of where this project's files live. */
+const pathBase = (connectionType) => projectsBase(pathPlatform(connectionType, platform.value));
 const sanitizeForPath = (n) =>
   n
     .toLowerCase()
@@ -140,38 +147,71 @@ function Toggle({ on, disabled, label, onChange }) {
  * hint sit above a full-width control; `inline` keeps the control on the
  * right (switches, buttons, read-only values) and `wide` spans every column.
  */
-function Row({ label, hint, children, inline = false, wide = false, as = "label", k }) {
+/** Grid span vars a Group hands each tile (see utils/settingsGrid.js). */
+const spanStyle = (span, span2) => (span > 1 || span2 > 1 ? { "--s": span, "--s2": span2 } : undefined);
+
+function Row({ label, hint, children, inline = false, wide = false, as = "label", k, span = 1, span2 = 1 }) {
   const Tag = as;
   const edited = useContext(DirtyKeys).has(k);
   return (
-    <Tag class={`sv-field${inline ? " sv-field--inline" : ""}${wide ? " sv-field--wide" : ""}${edited ? " is-edited" : ""}`}>
-      <span class="sv-row-text">
-        <span class="sv-row-label">
-          {label}
-          {edited && <span class="sv-edited">Edited</span>}
+    <Tag
+      class={`sv-field${inline ? " sv-field--inline" : ""}${wide ? " sv-field--wide" : ""}${edited ? " is-edited" : ""}`}
+      style={spanStyle(span, span2)}
+    >
+      {/* The body switches to a side-by-side row when the tile is wide. */}
+      <span class="sv-field-body">
+        <span class="sv-row-text">
+          <span class="sv-row-label">
+            {label}
+            {edited && <span class="sv-edited">Edited</span>}
+          </span>
+          {hint && <span class="sv-row-hint">{hint}</span>}
         </span>
-        {hint && <span class="sv-row-hint">{hint}</span>}
+        <span class="sv-row-control">{children}</span>
       </span>
-      <span class="sv-row-control">{children}</span>
     </Tag>
   );
 }
 
 /** Titled group of tiles inside a panel. */
+/** Flattens fragments and drops empty slots, keeping a stable key per tile. */
+function tilesOf(children, prefix = "") {
+  const out = [];
+  toChildArray(children).forEach((child, i) => {
+    if (child && child.type === Fragment) out.push(...tilesOf(child.props.children, `${prefix}${i}.`));
+    else if (child && typeof child === "object") out.push({ node: child, key: child.key ?? child.props?.k ?? child.props?.id ?? `${prefix}${i}` });
+  });
+  return out;
+}
+
+/**
+ * Titled group of tiles. The number of columns follows the number of tiles
+ * and the last tile of an incomplete row stretches, so rows are always full.
+ */
 function Group({ title, children }) {
+  const tiles = tilesOf(children);
+  // Only Row / OverviewCard tiles take part; anything else keeps its own row.
+  const isTile = (n) => n.type === Row || n.type === OverviewCard;
+  const layout = layoutTiles(tiles.map((t) => ({ wide: !isTile(t.node) || !!t.node.props?.wide })));
   return (
     <div class="sv-group">
       {title && <div class="sv-subhead">{title}</div>}
-      <div class="sv-grid">{children}</div>
+      <div class="sv-grid" style={{ "--sv-cols": layout.cols, "--sv-cols2": layout.cols2 }}>
+        {tiles.map((t, i) =>
+          isTile(t.node)
+            ? cloneElement(t.node, { key: t.key, span: layout.spans[i], span2: layout.spans2[i] })
+            : cloneElement(t.node, { key: t.key }),
+        )}
+      </div>
     </div>
   );
 }
 
 /** Clickable summary card on the General panel that jumps to a category. */
-function OverviewCard({ id, items }) {
+function OverviewCard({ id, items, span = 1, span2 = 1 }) {
   const c = SETTINGS_CATEGORIES.find((x) => x.id === id);
   return (
-    <button type="button" class="sv-ov" style={{ "--sv-tone": tone(id) }} onClick={() => (settingsCategory.value = id)}>
+    <button type="button" class="sv-ov" style={{ "--sv-tone": tone(id), ...spanStyle(span, span2) }} onClick={() => openCategory(id)}>
       <span class="sv-ov-head">
         <SectionIcon id={id} size={15} tile={false} />
         <span class="sv-ov-title">{c.label}</span>
@@ -224,33 +264,56 @@ function Seg({ value, options, onChange, disabled, label }) {
 
 const numOrEmpty = (v) => (v === "" ? "" : Number(v));
 
-function SshKeysList() {
-  const [keys, setKeys] = useState(null);
-  useEffect(() => {
-    invoke("list_ssh_keys")
-      .then((k) => setKeys(Array.isArray(k) ? k : []))
-      .catch(() => setKeys([]));
-  }, []);
-  if (keys === null) return <p class="sv-empty">Looking for keys…</p>;
-  if (keys.length === 0) return <p class="sv-empty">No SSH keys found in ~/.ssh/. Remote projects use your SSH config and agent.</p>;
+/** Settings → Import / export, for the open project. */
+function TransferPanel({ project }) {
+  const [exporting, setExporting] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [pickError, setPickError] = useState("");
+  const [picking, setPicking] = useState(false);
+
+  async function pickImport() {
+    setPickError("");
+    setPicking(true);
+    try {
+      const file = await chooseImportFile();
+      if (file) setImportFile(file);
+    } catch (e) {
+      setPickError(e?.message || String(e));
+    } finally {
+      setPicking(false);
+    }
+  }
+
   return (
-    <div class="sv-keys">
-      {keys.map((k) => (
-        <div key={k.name} class="sv-key">
-          <span class="sv-key-icon" dangerouslySetInnerHTML={{ __html: svgIcon(SECTION_ICON_PATHS.ssh, 15) }} />
-          <span class="sv-key-text">
-            <span class="sv-key-name">{k.name}</span>
-            <span class="sv-key-fp" title={k.fingerprint}>{k.fingerprint}</span>
-          </span>
-          <span class="sv-key-type">{k.key_type}</span>
-        </div>
-      ))}
-    </div>
+    <Group>
+      <Row as="div" inline wide label="Export this project" hint="Lite (settings), Standard (+ runs and metrics) or Full (+ logs, checkpoints and models)">
+        <button type="button" class="settings-action-btn" onClick={() => setExporting(true)}>Export…</button>
+      </Row>
+      <Row as="div" inline wide label="Import" hint="Create a new project from an export, or replace this project with it">
+        <button type="button" class="settings-action-btn" onClick={pickImport} disabled={picking}>
+          {picking ? "Opening…" : "Import…"}
+        </button>
+      </Row>
+      {pickError && <p class="sv-error" role="alert">{pickError}</p>}
+      {exporting && <ExportDialog project={project} onClose={() => setExporting(false)} />}
+      {importFile && <ImportDialog file={importFile} project={project} onClose={() => setImportFile(null)} />}
+    </Group>
   );
 }
 
 /** Category shown on the right; kept across visits to the settings view. */
-const settingsCategory = signal("general");
+/**
+ * Open category per project ({ [projectId]: categoryId }), kept across visits
+ * to the settings view. Each project remembers its own; new ones start on
+ * General.
+ */
+const settingsCategoryByProject = signal({});
+const categoryOf = (projectId) => settingsCategoryByProject.value[projectId] || "general";
+/** Opens a category in the current project's settings. */
+function openCategory(id) {
+  const pid = currentProjectId.value;
+  settingsCategoryByProject.value = { ...settingsCategoryByProject.value, [pid]: id };
+}
 
 function ClearAllDataRow() {
   const [showDialog, setShowDialog] = useState(false);
@@ -267,14 +330,20 @@ function ClearAllDataRow() {
   );
 }
 
+const CLEAR_PHRASE = "permanently delete";
+
 function ClearAllDataDialog({ onClose }) {
   const [confirmText, setConfirmText] = useState("");
   const [clearing, setClearing] = useState(false);
-  const confirmed = confirmText.toLowerCase() === "permanently delete";
+  const [error, setError] = useState("");
+  const confirmed = phraseMatches(confirmText, CLEAR_PHRASE);
+  const projects = projectList.value.length;
+  const runs = allRuns.value.length;
 
   async function handleClear() {
-    if (!confirmed) return;
+    if (!confirmed || clearing) return;
     setClearing(true);
+    setError("");
     try {
       await clearAllData();
       projectList.value = [];
@@ -282,77 +351,69 @@ function ClearAllDataDialog({ onClose }) {
       navigate("dashboard");
       window.location.reload();
     } catch (err) {
-      console.error("Failed to clear data:", err);
+      setError(`Couldn't clear the data: ${err?.message || err}`);
       setClearing(false);
     }
   }
 
   return (
-    <div
-      class="wizard-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <Dialog
+      title="Clear all data?"
+      sub="Every project and run is removed from NightFlow. This can't be undone."
+      icon="database"
+      tone="danger"
+      role="alertdialog"
+      busy={clearing}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" class="nfd-btn" onClick={onClose} disabled={clearing}>Cancel</button>
+          <button type="button" class="nfd-btn nfd-btn--danger" disabled={!confirmed || clearing} onClick={handleClear}>
+            {clearing ? <><span class="nfd-spinner" /> Clearing…</> : "Delete everything"}
+          </button>
+        </>
+      }
     >
-      <div class="delete-dialog">
-        <div class="delete-dialog-header">
-          <h2>Clear All Data</h2>
-          <button class="wizard-close-btn" onClick={onClose}>
-            &times;
-          </button>
-        </div>
-        <div class="delete-dialog-body">
-          <p class="delete-dialog-warning">
-            This will permanently delete <strong>all projects</strong>, runs,
-            and metrics from the app. This action cannot be undone.
-          </p>
-          <p class="delete-dialog-prompt">
-            Type <strong>permanently delete</strong> to confirm:
-          </p>
-          <input
-            class="wizard-input delete-dialog-input"
-            type="text"
-            placeholder="Type permanently delete to confirm"
-            value={confirmText}
-            onInput={(e) => setConfirmText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && confirmed) handleClear();
-            }}
-            autoFocus
-          />
-        </div>
-        <div class="wizard-footer">
-          <button class="wizard-btn wizard-btn-secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            class="wizard-btn wizard-btn-danger"
-            disabled={!confirmed || clearing}
-            onClick={handleClear}
-          >
-            {clearing ? "Clearing..." : "Delete Everything"}
-          </button>
-        </div>
-      </div>
-    </div>
+      <ul class="nfd-facts">
+        <li><span class="nfd-fact-dot" />Projects<span class="nfd-fact-value">{projects} removed</span></li>
+        <li><span class="nfd-fact-dot" />Runs, metrics and notes<span class="nfd-fact-value">{runs} removed</span></li>
+        <li><span class="nfd-fact-dot is-kept" />Files in project folders<span class="nfd-fact-value">kept</span></li>
+        <li><span class="nfd-fact-dot is-kept" />SSH keys added and preferences<span class="nfd-fact-value">kept</span></li>
+      </ul>
+      <p class="nfd-text">To keep a project, export it first from its <strong>Import / export</strong> settings.</p>
+      <ConfirmPhrase phrase={CLEAR_PHRASE} value={confirmText} onInput={setConfirmText} onSubmit={handleClear} disabled={clearing} />
+      {error && <p class="nfd-error" role="alert">{error}</p>}
+    </Dialog>
   );
 }
 
+/**
+ * Settings for the current project. Keyed by project so switching projects
+ * starts a fresh page: no draft, preview or dialog carries over from the
+ * project you were in.
+ */
 export function SettingsView() {
+  const id = currentProject.value?.id;
+  return <ProjectSettings key={id ?? "none"} />;
+}
+
+/** The editable copy of a project, with defaults for fields old projects lack. */
+function initialDraft(proj) {
+  if (!proj) return {};
+  const d = pick(proj);
+  if (!d.connectionType) d.connectionType = "localhost";
+  if (!d.sshCommand) d.sshCommand = "localhost";
+  if (!d.taskType) d.taskType = "Classification";
+  if (!d.modelCategory) d.modelCategory = "Edge";
+  if (!d.datasetFormat) d.datasetFormat = "Folder";
+  if (!d.detectionArch) d.detectionArch = "fcos";
+  if (!d.segHeadType) d.segHeadType = "deeplabv3plus";
+  return d;
+}
+
+function ProjectSettings() {
   const proj = currentProject.value;
-  const [draft, setDraft] = useState(() => {
-    if (!proj) return {};
-    const pickedData = pick(proj);
-    // Ensure critical fields have values for proper rendering
-    if (!pickedData.connectionType) pickedData.connectionType = "localhost";
-    if (!pickedData.sshCommand) pickedData.sshCommand = "localhost";
-    if (!pickedData.taskType) pickedData.taskType = "Classification";
-    if (!pickedData.modelCategory) pickedData.modelCategory = "Edge";
-    if (!pickedData.datasetFormat) pickedData.datasetFormat = "Folder";
-    if (!pickedData.detectionArch) pickedData.detectionArch = "fcos";
-    if (!pickedData.segHeadType) pickedData.segHeadType = "deeplabv3plus";
-    return pickedData;
-  });
+  const [draft, setDraft] = useState(() => initialDraft(proj));
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef(null);
   const [augPreviewOpen, setAugPreviewOpen] = useState(false);
@@ -410,21 +471,6 @@ export function SettingsView() {
     setAugPreviewError(null);
   };
 
-  // Re-sync draft when switching projects
-  useEffect(() => {
-    if (proj) {
-      const pickedData = pick(proj);
-      // Ensure critical fields have values for proper rendering
-      if (!pickedData.connectionType) pickedData.connectionType = "localhost";
-      if (!pickedData.sshCommand) pickedData.sshCommand = "localhost";
-      if (!pickedData.taskType) pickedData.taskType = "Classification";
-      if (!pickedData.modelCategory) pickedData.modelCategory = "Edge";
-      if (!pickedData.datasetFormat) pickedData.datasetFormat = "Folder";
-      if (!pickedData.detectionArch) pickedData.detectionArch = "fcos";
-      if (!pickedData.segHeadType) pickedData.segHeadType = "deeplabv3plus";
-      setDraft(pickedData);
-    }
-  }, [proj?.id]);
 
   if (!proj)
     return (
@@ -466,7 +512,7 @@ export function SettingsView() {
       savedTimer.current = setTimeout(() => setSaved(false), 2000);
     } catch (error) {
       console.error("Error saving project:", error);
-      alert(`Could not save training configuration: ${error.message || error}`);
+      showError("Couldn't save the settings", error, "Your changes are still here; try saving again.");
     }
   }
 
@@ -475,7 +521,7 @@ export function SettingsView() {
   const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
 
   function handleDiscard() {
-    setDraft(pick(proj));
+    setDraft(initialDraft(proj));
     setSaved(false);
   }
 
@@ -497,47 +543,11 @@ export function SettingsView() {
     : null;
 
   const derivedProjectPath = draft.name
-    ? `${pathBase()}${sanitizeForPath(draft.name)}`
-    : pathBase();
+    ? `${pathBase(draft.connectionType)}${sanitizeForPath(draft.name)}`
+    : pathBase(draft.connectionType);
 
-  const category = SETTINGS_CATEGORIES.find((c) => c.id === settingsCategory.value) || SETTINGS_CATEGORIES[0];
+  const category = SETTINGS_CATEGORIES.find((c) => c.id === categoryOf(proj.id)) || SETTINGS_CATEGORIES[0];
   const dirtyCats = dirtyCategories(draft, proj);
-
-  function exportProject() {
-    const config = { ...proj };
-    // Remove internal/volatile fields
-    delete config.syncMetadata;
-    const projectRuns = allRuns.value.filter((r) => r.projectId === proj.id);
-    const json = JSON.stringify({ project: config, runs: projectRuns }, null, 2);
-    downloadFile(json, `${(proj.name || "project").replace(/\s+/g, "-")}-export.json`, "application/json");
-  }
-
-  function importProject() {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-        const parsed = JSON.parse(await file.text());
-        // Support new format { project, runs } and legacy flat config
-        const config = parsed.project ? { ...parsed.project } : parsed;
-        const runs = Array.isArray(parsed.runs) ? parsed.runs : [];
-        // Assign new ID
-        config.id = String(Math.max(0, ...projectList.value.map((p) => Number(p.id) || 0)) + 1);
-        config.name = config.name ? `${config.name} (imported)` : "Imported Project";
-        delete config.syncMetadata;
-        await addProject(config);
-        // Import associated runs with updated projectId
-        for (const run of runs) await saveRun({ ...run, projectId: config.id });
-        if (runs.length > 0) await loadRuns();
-      } catch (err) {
-        console.error("Failed to import project:", err);
-      }
-    };
-    input.click();
-  }
 
   const fmtLower = (draft.datasetFormat || "").toLowerCase();
   const winPath = platform.value === "windows";
@@ -582,6 +592,10 @@ export function SettingsView() {
             options={[{ value: "localhost", label: "This machine" }, { value: "remote", label: "Remote (SSH)" }]}
             onChange={(v) => {
               set("connectionType", v);
+              // A still-default folder follows the new location's path style.
+              if (isDefaultProjectPath(draft.projectPath, draft.name)) {
+                set("projectPath", defaultProjectPath(draft.name, pathPlatform(v, platform.value)));
+              }
               if (v === "localhost") set("sshCommand", "localhost");
               else if (draft.sshCommand === "localhost") set("sshCommand", "");
             }}
@@ -590,6 +604,25 @@ export function SettingsView() {
         {draft.connectionType === "remote" && (
           <Row k="sshCommand" wide label="SSH command" hint="How you'd connect from a terminal">
             <input class="settings-input settings-input-mono sv-w-xl" type="text" value={draft.sshCommand} placeholder="ssh user@host" disabled={locked} onInput={(e) => set("sshCommand", e.target.value)} />
+          </Row>
+        )}
+        {draft.connectionType === "remote" && (
+          <Row
+            as="div"
+            wide
+            label="SSH key"
+            hint={sshKeyPath(draft.sshCommand) ? "Only this key is offered to the server" : "Uses your SSH config and agent"}
+          >
+            <SshKeySelect
+              command={draft.sshCommand}
+              disabled={locked}
+              onChange={(cmd) => set("sshCommand", cmd)}
+              wrapClass="sv-select sv-w-xl"
+              selectClass="settings-select"
+            />
+            <button type="button" class="sv-link" onClick={() => openCategory("ssh")}>
+              Manage keys
+            </button>
           </Row>
         )}
       </Group>
@@ -810,7 +843,7 @@ export function SettingsView() {
 
     appearance: (
       <Group>
-        <Row as="div" label="Theme">
+        <Row as="div" inline label="Theme" hint="Dark or light interface">
           <Seg
             label="Theme"
             value={theme.value}
@@ -824,18 +857,9 @@ export function SettingsView() {
       </Group>
     ),
 
-    ssh: <div class="sv-group"><SshKeysList /></div>,
+    ssh: <div class="sv-group"><SshKeysManager projectCommand={draft.connectionType === "remote" ? draft.sshCommand : ""} /></div>,
 
-    transfer: (
-      <Group>
-        <Row as="div" inline label="Export this project" hint="Settings and runs as one JSON file">
-          <button type="button" class="settings-action-btn" onClick={exportProject}>Export</button>
-        </Row>
-        <Row as="div" inline label="Import a project" hint="Creates a new project from an exported file">
-          <button type="button" class="settings-action-btn" onClick={importProject}>Import</button>
-        </Row>
-      </Group>
-    ),
+    transfer: <TransferPanel project={proj} />,
 
     danger: (
       <Group>
@@ -904,7 +928,7 @@ export function SettingsView() {
                   class={`sv-nav-item${c.id === category.id ? " is-active" : ""}${c.danger ? " is-danger" : ""}`}
                   style={{ "--sv-tone": tone(c.id) }}
                   aria-current={c.id === category.id ? "page" : undefined}
-                  onClick={() => (settingsCategory.value = c.id)}
+                  onClick={() => openCategory(c.id)}
                 >
                   <SectionIcon id={c.id} size={15} tile={false} />
                   <span class="sv-nav-text">{c.label}</span>

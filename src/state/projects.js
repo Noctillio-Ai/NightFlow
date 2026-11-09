@@ -1,4 +1,5 @@
 import { signal, computed, effect } from "@preact/signals";
+import { projectsBase, pathPlatform, normalizeProjectPath } from "../utils/projectPaths.js";
 import {
   getAllProjects,
   saveProject,
@@ -53,7 +54,10 @@ export async function loadProjects() {
       }
 
       // Only add defaults for fields that don't exist
-      // Migrate old paths to ~/nightflow/projects/
+      // Migrate very old saved paths to where those files were moved
+      // (~/nightflow/projects). This and the fallback below describe existing
+      // projects' folders, so they deliberately don't follow the newer
+      // default for new projects (~/.nightflow/projects, utils/projectPaths.js).
       let projectPath = p.projectPath;
       if (projectPath && projectPath.startsWith("/opt/nightflow/")) {
         projectPath = projectPath.replace(
@@ -68,6 +72,12 @@ export async function loadProjects() {
           "~/NightFlow/projects",
           "~/nightflow/projects",
         );
+      }
+
+      // A remote folder written Windows-style ("~\\…") can't work on the
+      // server (projects made on Windows before remote paths were fixed).
+      if (p.connectionType === "remote" && projectPath && projectPath.startsWith("~\\")) {
+        projectPath = normalizeProjectPath(projectPath, "remote");
       }
 
       return {
@@ -400,7 +410,7 @@ export const wizardCanProceed = computed(() => {
   return false;
 });
 
-const projectBasePath = () => platform.value === "windows" ? "~\\nightflow\\projects\\" : "~/nightflow/projects/";
+const projectBasePath = () => projectsBase(platform.value);
 
 export async function openWizard() {
   const basePath = projectBasePath();
@@ -460,7 +470,7 @@ export async function wizardCreate() {
     connectionType: d.connectionType,
     sshCommand: d.sshCommand.trim(),
     name: d.name.trim(),
-    projectPath: d.projectPath.trim().replace(/\/*$/, "/"),
+    projectPath: normalizeProjectPath(d.projectPath, pathPlatform(d.connectionType, platform.value)),
     taskType: d.taskType,
     modelCategory: d.modelCategory,
     detectionArch: d.detectionArch,
@@ -532,7 +542,7 @@ export const deleteTarget = computed(
 );
 
 export const deleteConfirmed = computed(
-  () => deleteConfirmText.value.toLowerCase() === "delete",
+  () => deleteConfirmText.value.trim().toLowerCase() === "delete",
 );
 
 export function openDeleteDialog(id) {

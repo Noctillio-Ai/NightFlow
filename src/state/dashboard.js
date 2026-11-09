@@ -1,4 +1,5 @@
 import { signal, computed } from "@preact/signals";
+import { closeExtraTerminalTabs } from "./terminalTabs.js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { notify } from "../utils/notifications.js";
@@ -51,6 +52,9 @@ function _setState(projectId, updates) {
 }
 
 // ── Computed signals (always reflect the active project) ──────────────────────
+
+/** Whether a given project (not only the current one) is connected. */
+export const isProjectConnected = (projectId) => !!_getState(projectId).connected;
 
 export const sshConnected = computed(
   () => _getState(currentProjectId.value).connected,
@@ -333,8 +337,9 @@ export async function toggleSshConnection() {
     // Stop any ongoing sync first
     stopSync(projectId);
 
-    // Disconnect: kill this project's terminal session
+    // Disconnect: kill this project's terminal sessions, extra tabs included
     setSshConnecting(true, projectId);
+    await closeExtraTerminalTabs(projectId);
     try {
       await invoke("kill_terminal", { sessionId: projectId });
     } catch (err) {
@@ -353,7 +358,8 @@ export async function toggleSshConnection() {
     const isSSH =
       rawSsh && rawSsh.trim() && rawSsh.trim().toLowerCase() !== "localhost";
 
-    // Kill any existing session for this project first
+    // Kill any existing sessions for this project first
+    await closeExtraTerminalTabs(projectId);
     try {
       await invoke("kill_terminal", { sessionId: projectId });
     } catch (_) {

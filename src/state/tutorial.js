@@ -159,7 +159,7 @@ export const wizardStepTips = [
   },
   {
     title: "Step 2: Project Name",
-    body: "Give your project a memorable name. A project folder will be auto-created under ~/nightflow/projects/ — you can customize the path if needed.",
+    body: "Give your project a memorable name. A project folder will be auto-created under ~/.nightflow/projects/ — you can customize the path if needed.",
   },
   {
     title: "Step 3: Task Type",
