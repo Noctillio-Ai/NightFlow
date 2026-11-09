@@ -20,7 +20,7 @@ When CSV is selected, the project wizard and dataset settings show a CSV columns
 
 ## Hardware
 
-Choose Auto, NVIDIA CUDA, Apple Metal (MPS), or CPU in advanced settings. Auto resolves availability on the machine running AutoTimm. CPU covers supported Intel, AMD and Apple silicon Python/PyTorch environments. GPU IDs apply only to CUDA; a single index is serialized with a trailing comma to distinguish it from a device count. CPU and Metal use one device. Full 32-bit precision and compilation off are portable defaults; float64 on Metal is rejected. Actual availability depends on the installed PyTorch build, operating system and hardware.
+Choose Auto, NVIDIA CUDA, Apple Metal (MPS), or CPU in **Settings → Hardware**. Auto resolves availability on the machine running AutoTimm. CPU covers supported Intel, AMD and Apple silicon Python/PyTorch environments. GPU IDs apply only to CUDA; a single index is serialized with a trailing comma to distinguish it from a device count. CPU and Metal use one device. Full 32-bit precision and compilation off are portable defaults; float64 on Metal is rejected. Actual availability depends on the installed PyTorch build, operating system and hardware.
 
 ## Current limitations
 
