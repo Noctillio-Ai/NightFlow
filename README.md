@@ -30,23 +30,23 @@
 <tr>
 <td align="center" width="33%">
 
-🌱 **New to machine learning?**
+**New to machine learning?**
 
-[What you need](#-what-you-need) → [Install](#-install) → [Your first model](#-your-first-model-in-10-minutes)
-
-</td>
-<td align="center" width="33%">
-
-🚀 **Done this before?**
-
-[Settings](#-every-setting-in-one-place) · [Remote GPUs](#-work-with-a-remote-gpu-server) · [Deploy](#-export--deploy-a-model)
+[What you need](#what-you-need) → [Install](#install) → [Your first model](#your-first-model-in-10-minutes)
 
 </td>
 <td align="center" width="33%">
 
-🛠️ **Here to hack on it?**
+**Done this before?**
 
-[Architecture](#-architecture) · [Build from source](#-build-from-source)
+[Settings](#every-setting-in-one-place) · [Remote GPUs](#work-with-a-remote-gpu-server) · [Deploy](#export--deploy-a-model)
+
+</td>
+<td align="center" width="33%">
+
+**Here to hack on it?**
+
+[Architecture](#architecture) · [Build from source](#build-from-source)
 
 </td>
 </tr>
@@ -57,41 +57,41 @@
 <br>
 
 <details>
-<summary><b>📖 Table of contents</b></summary>
+<summary><b> Table of contents</b></summary>
 
 <br>
 
 **Getting started**
-- [What is NightFlow?](#-what-is-nightflow)
-- [What you need](#-what-you-need)
-- [Install](#-install)
-- [Your first model in 10 minutes](#-your-first-model-in-10-minutes)
-- [Prepare your dataset](#-prepare-your-dataset)
-- [Words you'll see](#-words-youll-see)
+- [What is NightFlow?](#what-is-nightflow)
+- [What you need](#what-you-need)
+- [Install](#install)
+- [Your first model in 10 minutes](#your-first-model-in-10-minutes)
+- [Prepare your dataset](#prepare-your-dataset)
+- [Words you'll see](#words-youll-see)
 
 **Using NightFlow**
-- [Reading your results](#-reading-your-results)
-- [A tour of the app](#-a-tour-of-the-app)
-- [Every setting in one place](#-every-setting-in-one-place)
-- [Work with a remote GPU server](#-work-with-a-remote-gpu-server)
-- [Move a project to another computer](#-move-a-project-to-another-computer)
-- [Export & deploy a model](#-export--deploy-a-model)
-- [See what the model learned](#-see-what-the-model-learned)
+- [Reading your results](#reading-your-results)
+- [A tour of the app](#a-tour-of-the-app)
+- [Every setting in one place](#every-setting-in-one-place)
+- [Work with a remote GPU server](#work-with-a-remote-gpu-server)
+- [Move a project to another computer](#move-a-project-to-another-computer)
+- [Export & deploy a model](#export--deploy-a-model)
+- [See what the model learned](#see-what-the-model-learned)
 
 **Help**
-- [Troubleshooting](#-troubleshooting)
-- [FAQ](#-faq)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
 
 **For developers**
-- [Architecture](#-architecture)
-- [Build from source](#-build-from-source)
-- [Contributing](#-contributing)
+- [Architecture](#architecture)
+- [Build from source](#build-from-source)
+- [Contributing](#contributing)
 
 </details>
 
 ---
 
-## ✨ What is NightFlow?
+## What is NightFlow?
 
 NightFlow teaches a computer to recognise things in pictures, using **your** images on
 **your** machine.
@@ -103,7 +103,7 @@ you can compare them.
 
 ```mermaid
 graph LR
-    A["📁 Your labelled<br/>images"] --> B["🧙 7-step<br/>wizard"] --> C["⚡ Training<br/>(live charts)"] --> D["📊 Results &<br/>run history"] --> E["📦 A model you<br/>can use anywhere"]
+    A["Your labelled<br/>images"] --> B["7-step<br/>wizard"] --> C["Training<br/>(live charts)"] --> D["Results &<br/>run history"] --> E["A model you<br/>can use anywhere"]
     style A fill:#1f2937,stroke:#4b5563,color:#f9fafb
     style B fill:#1f2937,stroke:#4b5563,color:#f9fafb
     style C fill:#1f2937,stroke:#4b5563,color:#f9fafb
@@ -115,7 +115,7 @@ graph LR
 <tr>
 <td width="50%" valign="top">
 
-#### 🌱 If you've never trained a model
+#### If you've never trained a model
 
 The wizard asks seven plain questions and picks sensible defaults for anything you
 don't know. You never have to open a config file, write Python or use a terminal.
@@ -123,7 +123,7 @@ don't know. You never have to open a config file, write Python or use a terminal
 </td>
 <td width="50%" valign="top">
 
-#### 🚀 If you do this for a living
+#### If you do this for a living
 
 Every default can be overridden: optimizer, scheduler, precision, gradient clipping,
 augmentation, accelerator, GPU IDs. The YAML it writes is a plain
@@ -139,14 +139,14 @@ augmentation, accelerator, GPU IDs. The YAML it writes is a plain
 
 ---
 
-## 🧰 What you need
+## What you need
 
-| | What | Why |
-| :---: | :--- | :--- |
-| 💻 | **A Mac with Apple silicon, a Linux PC (x64), or a Windows 11 PC (x64, beta)** | To run the app. |
-| 🖼️ | **Some labelled images**: ideally 50+ per category to start | What the model learns from. [How to lay them out →](#-prepare-your-dataset) |
-| 🌐 | **An internet connection for the first setup** | NightFlow downloads its own Python 3.12 and training libraries once per project. |
-| ⚡ | **A GPU (optional)** | Makes training much faster. NVIDIA (CUDA) and Apple silicon (Metal) are used automatically; a plain CPU works too, just slower. |
+| What | Why |
+| :--- | :--- |
+| **A Mac with Apple silicon, a Linux PC (x64), or a Windows 11 PC (x64, beta)** | To run the app. |
+| **Some labelled images**: ideally 50+ per category to start | What the model learns from. [How to lay them out →](#prepare-your-dataset) |
+| **An internet connection for the first setup** | NightFlow downloads its own Python 3.12 and training libraries once per project. |
+| **A GPU (optional)** | Makes training much faster. NVIDIA (CUDA) and Apple silicon (Metal) are used automatically; a plain CPU works too, just slower. |
 
 > [!TIP]
 > **You don't need to install Python.** During the first **Sync**, NightFlow installs
@@ -155,13 +155,13 @@ augmentation, accelerator, GPU IDs. The YAML it writes is a plain
 
 ---
 
-## 📥 Install
+## Install
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### 🍎🐧 macOS & Linux
+### macOS & Linux
 
 Open **Terminal** and paste:
 
@@ -180,7 +180,7 @@ curl -fsSL https://raw.githubusercontent.com/Noctillio-Ai/NightFlow/main/install
 </td>
 <td width="50%" valign="top">
 
-### 🍺 Homebrew (macOS)
+### Homebrew (macOS)
 
 ```bash
 brew tap noctillio-ai/nightflow \
@@ -190,7 +190,7 @@ brew install --cask nightflow
 
 <br>
 
-### 🪟 Windows 11 (beta)
+### Windows 11 (beta)
 
 Open **PowerShell** and paste:
 
@@ -223,7 +223,7 @@ Needs Windows 11 (build 22000+) on an x64 PC.
 
 ---
 
-## 🎯 Your first model in 10 minutes
+## Your first model in 10 minutes
 
 ```mermaid
 graph LR
@@ -240,20 +240,20 @@ graph LR
 On first launch, click **Create your first project** (later, use the **+** in the
 sidebar). A seven-step wizard opens. Not sure what to pick? Use the right-hand column:
 
-| Step | It asks | 🌱 If you're unsure, pick |
+| Step | It asks |  If you're unsure, pick |
 | :--- | :--- | :--- |
 | **1 · Connection** | Train on this computer, or work on a remote server over SSH? | **This machine** |
 | **2 · Name** | A project name and folder | Any name; the default folder (`~/.nightflow/projects/<name>/`) is fine |
 | **3 · Task** | What should the model do? | **Classification** (one label per image) |
 | **4 · Backbone** | How big a model? | **Edge**: small and fast, perfect for a first try |
-| **5 · Dataset** | Where your images are and how they're organised | **Folder** ([see the layout](#-prepare-your-dataset)) |
+| **5 · Dataset** | Where your images are and how they're organised | **Folder** ([see the layout](#prepare-your-dataset)) |
 | **6 · Training settings** | Epochs, learning rate, batch size… | Leave everything blank; good defaults are used |
 | **7 · Review** | Check everything | Click **Create project** |
 
 > [!TIP]
 > Already have a project exported from NightFlow (for example from another computer)?
 > Click **Import a project** on the start screen or inside the wizard instead.
-> [More on moving projects →](#-move-a-project-to-another-computer)
+> [More on moving projects →](#move-a-project-to-another-computer)
 
 ### 2 · Connect
 
@@ -284,14 +284,14 @@ moving within a minute or so. Loss should go **down**, accuracy **up**.
 ### 5 · Review
 
 Open **Experiments** to see the run, its best score, and its full history.
-[How to read the results →](#-reading-your-results)
+[How to read the results →](#reading-your-results)
 
-🎉 **That's it: you've trained an image model.** Try a bigger backbone, more epochs, or
+**That's it: you've trained an image model.** Try a bigger backbone, more epochs, or
 a different augmentation preset, then compare the runs side by side.
 
 ---
 
-## 📁 Prepare your dataset
+## Prepare your dataset
 
 This is where most first attempts go wrong, so here's exactly what each format expects.
 
@@ -304,7 +304,7 @@ This is where most first attempts go wrong, so here's exactly what each format e
 | **Instance segmentation** | A mask for each separate object | COCO JSON · CSV |
 
 <details open>
-<summary><b>🗂️ Classification with folders: the easiest way to start</b></summary>
+<summary><b> Classification with folders: the easiest way to start</b></summary>
 
 <br>
 
@@ -331,7 +331,7 @@ Point NightFlow at `my_dataset/`. It finds the categories and counts the images 
 </details>
 
 <details>
-<summary><b>📄 Classification with a CSV file</b></summary>
+<summary><b> Classification with a CSV file</b></summary>
 
 <br>
 
@@ -350,7 +350,7 @@ Relative paths are resolved against the **image folder** you choose. Provide sep
 </details>
 
 <details>
-<summary><b>📦 Object detection (COCO JSON)</b></summary>
+<summary><b> Object detection (COCO JSON)</b></summary>
 
 <br>
 
@@ -370,7 +370,7 @@ The number of classes is read from the annotation files, so you don't type it in
 </details>
 
 <details>
-<summary><b>🎨 Segmentation datasets</b></summary>
+<summary><b> Segmentation datasets</b></summary>
 
 <br>
 
@@ -405,7 +405,7 @@ ones. Augmentation helps a lot with small datasets.
 
 ---
 
-## 📚 Words you'll see
+## Words you'll see
 
 <details>
 <summary><b>A plain-English glossary</b> (open if a term on screen is unfamiliar)</summary>
@@ -432,13 +432,13 @@ ones. Augmentation helps a lot with small datasets.
 
 ---
 
-## 📊 Reading your results
+## Reading your results
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### ⚡ While it trains
+### While it trains
 
 - **Live charts:** loss and accuracy (or mAP) update every epoch
 - **Dashboard at a glance:** readiness checks, the current run, best results and recent runs
@@ -450,7 +450,7 @@ ones. Augmentation helps a lot with small datasets.
 </td>
 <td width="50%" valign="top">
 
-### 🏁 After it trains
+### After it trains
 
 - **Run history:** searchable, sortable, and filterable
 - **Compare runs:** curves and settings side by side
@@ -466,12 +466,12 @@ ones. Augmentation helps a lot with small datasets.
 > [!TIP]
 > **What does "good" look like?** Training and validation loss both go down and level
 > off. If training keeps improving but validation gets worse, the model is
-> [overfitting](#-words-youll-see): try more images, stronger augmentation, fewer
+> [overfitting](#words-youll-see): try more images, stronger augmentation, fewer
 > epochs, or turn on early stopping.
 
 ---
 
-## 🧭 A tour of the app
+## A tour of the app
 
 | Screen | Shortcut | What it's for |
 | :--- | :---: | :--- |
@@ -486,7 +486,7 @@ ones. Augmentation helps a lot with small datasets.
 On Windows and Linux use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.
 
 <details>
-<summary><b>⌨️ All keyboard shortcuts</b></summary>
+<summary><b>⌨ All keyboard shortcuts</b></summary>
 
 <br>
 
@@ -506,7 +506,7 @@ the terminal has focus, so its usual shortcuts keep working.
 
 ---
 
-## 🔧 Every setting in one place
+## Every setting in one place
 
 Open **Settings** for any project. Each section remembers where you were, per project.
 Leave a field blank and AutoTimm's default is used.
@@ -522,7 +522,7 @@ Leave a field blank and AutoTimm's default is used.
 | **Hardware** | Accelerator (auto/CUDA/Metal/CPU), GPU IDs, precision (32 / 16-mixed / bf16-mixed), data-loader workers |
 | **Appearance** | Dark or light theme, replay the app tour |
 | **SSH keys** | Keys NightFlow may use, add existing ones or create new ones |
-| **Import / export** | [Move the project](#-move-a-project-to-another-computer) |
+| **Import / export** | [Move the project](#move-a-project-to-another-computer) |
 | **Danger zone** | Delete the project, or clear all app data |
 
 > [!NOTE]
@@ -530,7 +530,7 @@ Leave a field blank and AutoTimm's default is used.
 > running job. Disconnect on the Dashboard to edit.
 
 <details>
-<summary><b>🔍 See the generated config</b> (nothing is hidden)</summary>
+<summary><b> See the generated config</b> (nothing is hidden)</summary>
 
 <br>
 
@@ -559,7 +559,7 @@ trainer:
 </details>
 
 <details>
-<summary><b>🎨 Preview augmentation before you train</b></summary>
+<summary><b> Preview augmentation before you train</b></summary>
 
 <br>
 
@@ -571,7 +571,7 @@ pipeline training uses, so you know what the policy does to your data before you
 
 ---
 
-## 📡 Work with a remote GPU server
+## Work with a remote GPU server
 
 Point a project at a server you reach over SSH (a lab machine, or a rented cloud GPU).
 
@@ -612,15 +612,15 @@ watch logs or the GPU while it trains.
 
 ---
 
-## 🚚 Move a project to another computer
+## Move a project to another computer
 
 **Settings → Import / export → Export…** packages a project in one of three sizes:
 
 | Level | Contains | File | Typical size |
 | :--- | :--- | :---: | :--- |
-| 🪶 **Lite** | Settings only: a template for a similar project | `.json` | KB |
-| 📚 **Standard** | Settings + every run: metrics, notes, tags, test results | `.json` | KB – MB |
-| 📦 **Full** | Standard + the run files: logs, checkpoints, exported models, and optionally the **dataset** | `.nightflow` | MB – GB |
+| **Lite** | Settings only: a template for a similar project | `.json` | KB |
+| **Standard** | Settings + every run: metrics, notes, tags, test results | `.json` | KB – MB |
+| **Full** | Standard + the run files: logs, checkpoints, exported models, and optionally the **dataset** | `.nightflow` | MB – GB |
 
 - **Full** shows what it found before you export (*"2 trained models and 2 checkpoints"*),
   lets you choose which checkpoints to include (best + last, all, or none), and reports
@@ -643,7 +643,7 @@ the new computer (NightFlow checks the path exists).
 
 ---
 
-## 📦 Export & deploy a model
+## Export & deploy a model
 
 Turn a finished run into a file you can use in your own apps:
 
@@ -656,7 +656,7 @@ Turn a finished run into a file you can use in your own apps:
 
 ---
 
-## 🔬 See what the model learned
+## See what the model learned
 
 Six ways to visualise which parts of an image drove a prediction:
 
@@ -688,14 +688,14 @@ Made for Vision Transformer models.
 
 ---
 
-## 🩺 Troubleshooting
+## Troubleshooting
 
 | Symptom | Fix |
 | :--- | :--- |
 | **The sidebar only shows Dashboard and Settings** | Connect, then **Sync**. The other screens appear once the project is ready. |
 | **Settings fields are greyed out** | Settings lock while connected. Disconnect on the Dashboard to edit. |
 | **Training fails right away** | Sync didn't finish. Re-run it and check the Python environment step in the sync log. |
-| **"Managed training currently launches local processes only"** | The project is remote. Start training in a [terminal tab](#-work-with-a-remote-gpu-server) on the server. |
+| **"Managed training currently launches local processes only"** | The project is remote. Start training in a [terminal tab](#work-with-a-remote-gpu-server) on the server. |
 | **"Dataset shows zero images"** | The path is wrong, or the layout doesn't match the chosen format. The **Dataset** screen shows what was parsed. |
 | **Dataset path "not found" after moving computers** | Point it at the right folder in the import dialog or **Settings → Dataset**, or export with **Include dataset** next time. |
 | **SSH: "Permission denied" or "Too many authentication failures"** | Pick the right key in **Settings → Connection → SSH key**, and make sure its public key is on the server. |
@@ -708,14 +708,14 @@ fastest way to a fix.
 
 ---
 
-## 💬 FAQ
+## FAQ
 
 <details>
 <summary><b>Do I need to know Python or machine learning?</b></summary>
 
 <br>
 
-No. The wizard and defaults cover a complete first run. The [glossary](#-words-youll-see)
+No. The wizard and defaults cover a complete first run. The [glossary](#words-youll-see)
 explains the terms you'll meet, and you can learn the knobs as you go.
 
 </details>
@@ -762,7 +762,7 @@ and run AutoTimm directly with any backbone you like.
 
 It connects, sets up the environment, monitors the hardware and gives you terminal tabs
 on the server, but the **Start Training** button only launches local runs for now.
-Start remote training from a terminal tab. [Details →](#-work-with-a-remote-gpu-server)
+Start remote training from a terminal tab. [Details →](#work-with-a-remote-gpu-server)
 
 </details>
 
@@ -777,7 +777,7 @@ Click **Update** when it appears in the app, or re-run the install command.
 
 ---
 
-## 🧱 Architecture
+## Architecture
 
 A [Tauri v2](https://v2.tauri.app) desktop app: a Preact front end and a Rust core
 talking over IPC. No bundled browser engine and no Node runtime in the shipped app.
@@ -855,7 +855,7 @@ src-tauri/src/
 
 ---
 
-## 🔨 Build from source
+## Build from source
 
 ```bash
 git clone https://github.com/Noctillio-Ai/NightFlow.git
@@ -950,7 +950,7 @@ script needs `curl`, `unzip` and `python3` (macOS or Linux; on Windows use WSL o
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Issues and pull requests are very welcome.
 
@@ -958,20 +958,20 @@ Issues and pull requests are very welcome.
 2. **Branch:** `git checkout -b feat/your-feature`
 3. **Keep it green:** `npm run lint`, `npm test` and `cargo clippy` should all pass.
 4. **Open a pull request.** It can merge into `main` once **Lint** and the
-   **macOS, Windows and Linux** builds pass.
+**macOS, Windows and Linux** builds pass.
 
-📘 Full documentation: **[noctillio-ai.github.io/NightFlow](https://noctillio-ai.github.io/NightFlow/)**
+Full documentation: **[noctillio-ai.github.io/NightFlow](https://noctillio-ai.github.io/NightFlow/)**
 
 ---
 
-## 📄 License
+## License
 
 [Apache 2.0](LICENSE)
 
 <div align="center">
 <br>
 
-**Built with ☕ by [Krishnatheja Vanka](https://github.com/theja-vanka)**
+**Built by [Krishnatheja Vanka](https://github.com/theja-vanka)**
 
 If NightFlow saved you time or cloud bills, a coffee helps keep it going.
 
