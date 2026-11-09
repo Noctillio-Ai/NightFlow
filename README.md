@@ -157,11 +157,7 @@ augmentation, accelerator, GPU IDs. The YAML it writes is a plain
 
 ## Install
 
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### macOS & Linux
+### macOS (Apple silicon)
 
 Open **Terminal** and paste:
 
@@ -169,28 +165,27 @@ Open **Terminal** and paste:
 curl -fsSL https://raw.githubusercontent.com/Noctillio-Ai/NightFlow/main/install.sh | bash
 ```
 
-It picks the right build for your computer, checks it, and installs it.
+The script downloads the latest release, verifies its checksum, and installs
+**NightFlow.app** into `/Applications`. NightFlow isn't notarized by Apple yet, so the
+script also clears the macOS quarantine flag on the app it just installed; without that,
+macOS refuses to open it. Intel Macs aren't supported.
 
-On Linux you get the AppImage. For the Debian/Ubuntu package instead:
+### Linux (x64)
+
+Open a terminal and paste:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Noctillio-Ai/NightFlow/main/install.sh | bash
+```
+
+This installs the AppImage into `~/.local/bin` with a desktop entry, without needing
+`sudo`. To install the Debian/Ubuntu package instead (asks for `sudo`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Noctillio-Ai/NightFlow/main/install.sh | bash -s -- --deb
 ```
 
-</td>
-<td width="50%" valign="top">
-
-### Homebrew (macOS)
-
-```bash
-brew tap noctillio-ai/nightflow \
-  https://github.com/Noctillio-Ai/NightFlow
-brew install --cask nightflow
-```
-
-<br>
-
-### Windows 11 (beta)
+### Windows 11 (x64, beta)
 
 Open **PowerShell** and paste:
 
@@ -198,28 +193,44 @@ Open **PowerShell** and paste:
 irm https://raw.githubusercontent.com/Noctillio-Ai/NightFlow/main/install.ps1 | iex
 ```
 
-Needs Windows 11 (build 22000+) on an x64 PC.
+Needs Windows 11 (build 22000 or later); Windows 10 and earlier aren't supported. The
+installer isn't code-signed yet, so SmartScreen may warn about it; the script clears that
+warning for the one installer it downloads. Windows support is in beta, so please
+[report anything that breaks](../../issues).
 
-</td>
-</tr>
-</table>
+### Homebrew (macOS)
 
-<details>
-<summary><b>About Windows, Intel Macs and updates</b></summary>
+Requires macOS Ventura or later.
 
-<br>
+```bash
+brew tap noctillio-ai/nightflow https://github.com/Noctillio-Ai/NightFlow
+brew trust noctillio-ai/nightflow
+brew install --cask nightflow
+```
 
-- **Windows is in beta.** The installer isn't code-signed yet, so SmartScreen may warn
-  about it; the script clears that warning for the one installer it downloads. Windows 10
-  and earlier aren't supported. Please [report anything that breaks](../../issues).
-- **Intel Macs aren't supported.** NightFlow ships for Apple silicon (M1 and later) only.
-- **Updates are built in.** When a new version is out, an **Update** button appears in
-  the app. It downloads the update, closes, installs, and reopens. If a training run is
-  active it asks first, since updating closes the app. If the automatic update can't run,
-  the button switches to **Download** and opens the release page. Re-running the install
-  command above also updates you.
+- `brew trust` is needed on Homebrew 7 and later, which won't load casks from a
+  third-party tap until you trust it. On older Homebrew, skip that line.
+- The cask clears the macOS quarantine flag on NightFlow.app after every install and
+  upgrade, so the app opens without a Gatekeeper warning.
 
-</details>
+### Installing a specific version
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Noctillio-Ai/NightFlow/main/install.sh | bash -s -- --version 0.7.1
+```
+
+### Updating
+
+NightFlow updates itself. When a new version is out, an **Update** button appears in the
+app; it downloads the update, closes, installs, and reopens. If a training run is active
+it asks first, since updating closes the app. If the automatic update can't run, the
+button changes to **Download** and opens the release page.
+
+You can also re-run the install command for your platform, or with Homebrew:
+
+```bash
+brew upgrade --cask nightflow
+```
 
 ---
 

@@ -1,8 +1,19 @@
 name: Update Homebrew Cask
 
 on:
-  release:
-    types: [published]
+  # The Release workflow creates the GitHub release with GITHUB_TOKEN, and
+  # events caused by that token don't start other workflows. A
+  # `release: published` trigger therefore never fires, so run after the
+  # Release workflow finishes instead.
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  # Manual run, e.g. to republish the cask for an existing release.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, e.g. 0.7.1 (empty = latest release)"
+        required: false
 
 permissions:
   contents: write
@@ -10,7 +21,7 @@ permissions:
 jobs:
   update-cask:
     runs-on: macos-latest
-    if: "!github.event.release.prerelease"
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout
@@ -18,28 +29,48 @@ jobs:
         with:
           ref: main
 
-      - name: Get version from tag
+      - name: Resolve the release
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Download release DMG and compute SHA256
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        id: sha
+          INPUT_VERSION: ${{ inputs.version }}
+          # For a tag push, the Release run's head branch is the tag (v1.2.3).
+          RUN_TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            TAG="v${INPUT_VERSION#v}"
+          elif [ -n "$RUN_TAG" ]; then
+            TAG="$RUN_TAG"
+          else
+            TAG=$(gh release view --json tagName --jq .tagName)
+          fi
 
-          gh release download "v${VERSION}" \
+          PRERELEASE=$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)
+          if [ "$PRERELEASE" = "true" ]; then
+            echo "$TAG is a pre-release; the cask tracks stable releases only."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download release DMG and compute SHA256
+        if: steps.version.outputs.skip != 'true'
+        id: sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ steps.version.outputs.tag }}" \
             --pattern "*aarch64*.dmg" \
             --dir /tmp/dmgs
 
           ls -lh /tmp/dmgs/
 
           ARM64_SHA=$(shasum -a 256 /tmp/dmgs/*aarch64*.dmg | awk '{print $1}')
-
           echo "arm64_sha=${ARM64_SHA}" >> "$GITHUB_OUTPUT"
 
-      - name: Update cask formula
+      - name: Update cask
+        if: steps.version.outputs.skip != 'true'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ARM64_SHA="${{ steps.sha.outputs.arm64_sha }}"
@@ -47,11 +78,9 @@ jobs:
           cat > Casks/nightflow.rb << EOF
           cask "nightflow" do
             version "${VERSION}"
-
-            url "https://github.com/Noctillio-Ai/NightFlow/releases/download/v#{version}/NightFlow_#{version}_aarch64.dmg",
-                verified: "github.com/Noctillio-Ai/NightFlow/"
             sha256 "${ARM64_SHA}"
 
+            url "https://github.com/Noctillio-Ai/NightFlow/releases/download/v#{version}/NightFlow_#{version}_aarch64.dmg"
             name "NightFlow"
             desc "Desktop app for managing and analyzing deep learning experiments"
             homepage "https://github.com/Noctillio-Ai/NightFlow"
@@ -62,9 +91,20 @@ jobs:
             end
 
             depends_on arch: :arm64
-            depends_on macos: ">= :ventura"
+            depends_on macos: :ventura
 
             app "NightFlow.app"
+
+            # NightFlow is ad-hoc signed, not notarized, so macOS refuses to open it while
+            # it carries the quarantine flag from the download. Clear it on this app only,
+            # as install.sh does. Runs after every install and upgrade.
+            postflight_steps do
+              run "/usr/bin/xattr",
+                  args:           ["-dr", "com.apple.quarantine", "{{appdir}}/NightFlow.app"],
+                  must_succeed:   false,
+                  writable_paths: ["NightFlow.app"],
+                  writable_base:  :appdir
+            end
 
             zap trash: [
               "~/Library/Application Support/com.nightflow.desktop",
@@ -76,10 +116,15 @@ jobs:
           end
           EOF
 
-          # Fix indentation (remove leading spaces from heredoc)
+          # Remove the heredoc's indentation.
           sed -i '' 's/^          //' Casks/nightflow.rb
 
+      - name: Check the cask with Homebrew
+        if: steps.version.outputs.skip != 'true'
+        run: brew style Casks/nightflow.rb
+
       - name: Commit and push updated cask
+        if: steps.version.outputs.skip != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
