@@ -574,6 +574,8 @@ mod tests {
     }
 
     /// Cipher named in an OpenSSH private key ("none" if unencrypted).
+    /// Only the Unix-only generation test uses it.
+    #[cfg(unix)]
     fn openssh_cipher(path: &std::path::Path) -> String {
         let text = std::fs::read_to_string(path).unwrap();
         let b64: String = text.lines().filter(|l| !l.starts_with("-----")).collect();
