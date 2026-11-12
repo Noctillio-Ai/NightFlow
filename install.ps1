@@ -85,7 +85,7 @@ Write-Log "Architecture : $ArchSlug"
 Write-Log "Asset        : $Asset"
 
 if (-not $Yes) {
-    $reply = Read-Host "Install NightFlow $Version? [y/N]"
+    $reply = Read-Host "Install NightFlow ${Version}? [y/N]"
     if ($reply -notmatch '^[Yy]$') { Write-Fail "Cancelled." }
 }
 
@@ -100,7 +100,7 @@ try {
     try {
         Invoke-WebRequest -Uri $DownloadUrl -OutFile $Installer -Headers $Headers
     } catch {
-        Write-Fail "Download failed. Does release $Tag contain $Asset?"
+        Write-Fail "Download failed. Does release $Tag contain ${Asset}?"
     }
 
     # ---- Optional checksum verification -------------------------------------
