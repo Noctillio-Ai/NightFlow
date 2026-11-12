@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use tauri::command;
 
 use crate::expand_tilde;
-use crate::TokioCommandNoWindow;
 
 #[command]
 pub fn list_run_folders(project_path: String) -> Result<Vec<String>, String> {
@@ -223,8 +222,7 @@ pub async fn check_runs_checkpoints(
             .collect();
         let script = checks.join("\n");
 
-        let output = tokio::process::Command::new(&parts[0])
-            .no_window()
+        let output = crate::tokio_command(&parts[0])
             .args(&parts[1..])
             .arg(&script)
             .output()

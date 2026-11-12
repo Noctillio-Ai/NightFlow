@@ -7,8 +7,6 @@ use tauri::{Emitter, State, command};
 
 use crate::expand_tilde;
 use crate::env::{get_shell_env, resolve_conda_path};
-#[cfg(windows)]
-use crate::StdCommandNoWindow;
 
 const TRAINING_META_FILE: &str = ".nightflow_training.json";
 const TRAINING_LOG_FILE_DEFAULT: &str = "training_events.jsonl";
@@ -30,8 +28,7 @@ fn kill_process_tree(pid: u32) {
     #[cfg(windows)]
     {
         // /T = kill child processes, /F = force
-        let _ = std::process::Command::new("taskkill")
-            .no_window()
+        let _ = crate::std_command("taskkill")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -406,7 +403,7 @@ pub async fn start_training(
                     }
                 };
 
-                let mut fit_cmd = tokio::process::Command::new(&fit_args[0]);
+                let mut fit_cmd = crate::tokio_command(&fit_args[0]);
                 fit_cmd.args(&fit_args[1..]);
                 fit_cmd.current_dir(&cwd2);
                 fit_cmd.stdout(std::process::Stdio::from(fit_stdout_file));
@@ -531,7 +528,7 @@ pub async fn start_training(
                 let mut test_full_args = test_args.clone();
                 test_full_args.extend(test_progress_args);
 
-                let mut c = tokio::process::Command::new(&test_full_args[0]);
+                let mut c = crate::tokio_command(&test_full_args[0]);
                 c.args(&test_full_args[1..]);
                 c.current_dir(&cwd2);
                 c.stdout(std::process::Stdio::from(test_stdout_file));
@@ -650,7 +647,7 @@ pub async fn start_training(
     let stdout_file = std::fs::OpenOptions::new().create(true).append(true).open(&stdout_path).map_err(|e| e.to_string())?;
     let stderr_file = std::fs::OpenOptions::new().create(true).append(true).open(&stderr_path).map_err(|e| e.to_string())?;
 
-    let mut cmd = tokio::process::Command::new(&executable);
+    let mut cmd = crate::tokio_command(&executable);
     for arg in &final_parts[1..] {
         cmd.arg(arg);
     }

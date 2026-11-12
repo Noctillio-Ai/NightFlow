@@ -11,7 +11,6 @@
 // Only the macOS/Linux branches write the installer via `write_all`.
 #[cfg(unix)]
 use std::io::Write;
-use std::process::Command;
 
 // The installer scripts are compiled into the binary; no runtime download needed.
 #[cfg(target_os = "macos")]
@@ -36,7 +35,7 @@ pub async fn check_for_update() -> Result<UpdateInfo, String> {
     let url = format!("https://api.github.com/repos/{repo}/releases/latest");
 
     // Use the system curl so we don't pull in an HTTP crate.
-    let out = Command::new("curl")
+    let out = crate::std_command("curl")
         .args(["-fsSL", "-H", "User-Agent: NightFlow", &url])
         .output()
         .map_err(|e| format!("failed to run curl: {e}"))?;
@@ -95,7 +94,7 @@ pub async fn install_update(app: tauri::AppHandle, version: Option<String>) -> R
 
         // Detach: new session, stdio to the log, so it outlives the quitting app.
         let log = std::fs::File::create(dir.join("nightflow-update.log")).ok();
-        let mut cmd = Command::new("/bin/bash");
+        let mut cmd = crate::std_command("/bin/bash");
         cmd.args(&args);
         if let Some(l) = log {
             let l2 = l.try_clone().ok();
@@ -141,7 +140,7 @@ pub async fn install_update(app: tauri::AppHandle, version: Option<String>) -> R
         // Detach so the updater outlives the quitting app:
         //   CREATE_NO_WINDOW (0x08000000) | CREATE_NEW_PROCESS_GROUP (0x00000200)
         use std::os::windows::process::CommandExt;
-        Command::new("powershell.exe")
+        crate::std_command("powershell.exe")
             .args(&args)
             .creation_flags(0x0800_0000 | 0x0000_0200)
             .spawn()
@@ -182,7 +181,7 @@ pub async fn install_update(app: tauri::AppHandle, version: Option<String>) -> R
 
         // Detach: own process group, stdio to a log, so it outlives the app exit.
         let log = std::fs::File::create(dir.join("nightflow-update.log")).ok();
-        let mut cmd = Command::new("/bin/bash");
+        let mut cmd = crate::std_command("/bin/bash");
         cmd.args(&args);
         if let Some(l) = log {
             let l2 = l.try_clone().ok();

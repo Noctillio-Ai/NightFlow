@@ -17,7 +17,7 @@ use std::time::UNIX_EPOCH;
 use tauri::{command, AppHandle, Emitter};
 
 use crate::env::python_cmd;
-use crate::{expand_tilde, home_dir, TokioCommandNoWindow};
+use crate::{expand_tilde, home_dir};
 
 /// (format id, file name inside the run folder, file extension when saved)
 const FORMATS: [(&str, &str, &str); 3] = [
@@ -110,8 +110,7 @@ impl RunLocation {
 }
 
 async fn ssh_run(parts: &[String], script: &str) -> Result<std::process::Output, String> {
-    tokio::process::Command::new(&parts[0])
-        .no_window()
+    crate::tokio_command(&parts[0])
         .args(&parts[1..])
         .arg(script)
         .output()
@@ -296,8 +295,7 @@ pub async fn export_model(
                     args.push("--hparams-yaml".to_string());
                     args.push(h.to_string_lossy().to_string());
                 }
-                let out = tokio::process::Command::new(&python)
-                    .no_window()
+                let out = crate::tokio_command(&python)
                     .args(&args)
                     .current_dir(&run_dir)
                     .output()
@@ -311,8 +309,7 @@ pub async fn export_model(
 
             if format == "tensorrt" {
                 stage("engine");
-                let out = tokio::process::Command::new(&python)
-                    .no_window()
+                let out = crate::tokio_command(&python)
                     .args(["-m", "autotimm.flow.tensorrt_convert", "--onnx", &onnx, "--output", &target])
                     .current_dir(&run_dir)
                     .output()
@@ -442,8 +439,7 @@ pub async fn save_export(
             args.push(format!("{host}:{remote}"));
             args.push(dest_str.clone());
             let scp = if cfg!(windows) { "scp.exe" } else { "scp" };
-            let out = tokio::process::Command::new(scp)
-                .no_window()
+            let out = crate::tokio_command(scp)
                 .args(&args)
                 .output()
                 .await

@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use crate::TokioCommandNoWindow;
 
 /// Lines kept from a command's output to explain a failure.
 const TAIL_LINES: usize = 30;
@@ -66,8 +65,8 @@ impl SyncLog {
     ) -> Result<(bool, String), String> {
         self.emit("cmd", format!("$ {} {}", program, args.join(" ")));
 
-        let mut cmd = tokio::process::Command::new(program);
-        cmd.no_window()
+        let mut cmd = crate::tokio_command(program);
+        cmd
             .args(args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())

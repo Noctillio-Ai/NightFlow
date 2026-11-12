@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use tauri::command;
 
 use crate::expand_tilde;
-use crate::TokioCommandNoWindow;
 
 /// Write a base64-encoded image to the interpretation directory for a run.
 /// Returns the written file path.
@@ -108,8 +107,7 @@ pub async fn run_interpretation(
         let find_script = format!(
             r#"find "{ckpt_dir_str}" -name "*.ckpt" -type f 2>/dev/null | head -1"#
         );
-        let find_output = tokio::process::Command::new(&parts[0])
-            .no_window()
+        let find_output = crate::tokio_command(&parts[0])
             .args(&parts[1..])
             .arg(&find_script)
             .output()
@@ -130,8 +128,7 @@ pub async fn run_interpretation(
         let python_cmd = format!(
             "if [ -x \"{venv_python}\" ]; then echo \"{venv_python}\"; else echo python3; fi"
         );
-        let py_output = tokio::process::Command::new(&parts[0])
-            .no_window()
+        let py_output = crate::tokio_command(&parts[0])
             .args(&parts[1..])
             .arg(&python_cmd)
             .output()
@@ -148,8 +145,7 @@ pub async fn run_interpretation(
             "{python} -m autotimm.cli.interpret_cli --checkpoint \"{remote_ckpt}\" --image \"{image_path}\" --methods \"{methods_str}\" --output-dir \"{output_dir_str}\" --task-class \"{tc}\" --hparams-yaml \"{hparams_arg_str}\""
         );
 
-        let output = tokio::process::Command::new(&parts[0])
-            .no_window()
+        let output = crate::tokio_command(&parts[0])
             .args(&parts[1..])
             .arg(&run_cmd)
             .output()
@@ -205,8 +201,7 @@ pub async fn run_interpretation(
         scp_args.push(scp_source);
         scp_args.push(local_output.to_string_lossy().to_string());
 
-        let scp_result = tokio::process::Command::new("scp")
-            .no_window()
+        let scp_result = crate::tokio_command("scp")
             .args(&scp_args)
             .output()
             .await
@@ -262,8 +257,7 @@ pub async fn run_interpretation(
             crate::env::python_cmd().to_string()
         };
 
-        let output = tokio::process::Command::new(&python)
-            .no_window()
+        let output = crate::tokio_command(&python)
             .arg("-m")
             .arg("autotimm.cli.interpret_cli")
             .arg("--checkpoint")
@@ -359,8 +353,7 @@ pub async fn preview_augmentation(
         crate::env::python_cmd().to_string()
     };
 
-    let output = tokio::process::Command::new(&python)
-        .no_window()
+    let output = crate::tokio_command(&python)
         .args(["-m", "autotimm.flow.augmentation_preview", "--image", &image_path, "--preset", &preset])
         .current_dir(&pp)
         .output()
@@ -455,8 +448,7 @@ pub async fn export_jit_model(
         let find_script = format!(
             r#"find "{ckpt_dir_str}" -name "*.ckpt" -type f 2>/dev/null | head -1"#
         );
-        let find_output = tokio::process::Command::new(&parts[0])
-            .no_window()
+        let find_output = crate::tokio_command(&parts[0])
             .args(&parts[1..])
             .arg(&find_script)
             .output()
@@ -477,8 +469,7 @@ pub async fn export_jit_model(
         let python_cmd = format!(
             "if [ -x \"{venv_python}\" ]; then echo \"{venv_python}\"; else echo python3; fi"
         );
-        let py_output = tokio::process::Command::new(&parts[0])
-            .no_window()
+        let py_output = crate::tokio_command(&parts[0])
             .args(&parts[1..])
             .arg(&python_cmd)
             .output()
@@ -495,8 +486,7 @@ pub async fn export_jit_model(
             "cd \"{run_dir_str}\" && {python} -m autotimm.export.export_jit --checkpoint \"{remote_ckpt}\" --output \"{output_path_str}\" --task-class \"{tc}\" --hparams-yaml \"{hparams_arg_str}\""
         );
 
-        let output = tokio::process::Command::new(&parts[0])
-            .no_window()
+        let output = crate::tokio_command(&parts[0])
             .args(&parts[1..])
             .arg(&run_cmd)
             .output()
@@ -542,8 +532,7 @@ pub async fn export_jit_model(
         scp_args.push(scp_source);
         scp_args.push(local_pt.to_string_lossy().to_string());
 
-        let scp_result = tokio::process::Command::new("scp")
-            .no_window()
+        let scp_result = crate::tokio_command("scp")
             .args(&scp_args)
             .output()
             .await
@@ -584,8 +573,7 @@ pub async fn export_jit_model(
         // Run from logs/{run_id}/
         let cwd = if run_logs_dir.exists() { run_logs_dir.clone() } else { PathBuf::from(&pp) };
 
-        let mut cmd = tokio::process::Command::new(&python);
-        cmd.no_window();
+        let mut cmd = crate::tokio_command(&python);
         cmd.arg("-m")
             .arg("autotimm.export.export_jit")
             .arg("--checkpoint")

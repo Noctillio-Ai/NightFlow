@@ -1,7 +1,6 @@
 use tauri::command;
 
 use crate::env::python_cmd;
-use crate::TokioCommandNoWindow;
 
 /// Inline Python script that collects system metrics without importing autotimm.
 /// This avoids the multi-second startup cost of loading PyTorch/timm via autotimm's __init__.
@@ -105,8 +104,7 @@ pub async fn get_system_metrics(ssh_command: Option<String>, project_path: Optio
         let escaped = SYSTEM_METRICS_SCRIPT.replace('\'', "'\\''");
         let remote_cmd = format!("python3 -c '{escaped}'");
 
-        let mut cmd = tokio::process::Command::new(&parts[0]);
-        cmd.no_window();
+        let mut cmd = crate::tokio_command(&parts[0]);
         cmd.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"]);
         for arg in &parts[1..] {
             cmd.arg(arg);
@@ -131,8 +129,7 @@ pub async fn get_system_metrics(ssh_command: Option<String>, project_path: Optio
             python_cmd().to_string()
         };
 
-        let output = tokio::process::Command::new(&python)
-            .no_window()
+        let output = crate::tokio_command(&python)
             .arg("-c")
             .arg(SYSTEM_METRICS_SCRIPT)
             .output()
@@ -235,8 +232,7 @@ pub async fn push_to_hub(params: PushToHubParams) -> Result<PushToHubResult, Str
         let remote_cmd = format!(
             "HF_PUSH_CFG=\"{escaped_json}\" bash -c 'if [ -x \"{venv_str}\" ]; then \"{venv_str}\" -m {push_module}; else python3 -m {push_module}; fi'",
         );
-        tokio::process::Command::new(&parts[0])
-            .no_window()
+        crate::tokio_command(&parts[0])
             .args(&parts[1..])
             .arg(remote_cmd)
             .output()
@@ -249,8 +245,7 @@ pub async fn push_to_hub(params: PushToHubParams) -> Result<PushToHubResult, Str
         } else {
             python_cmd().to_string()
         };
-        tokio::process::Command::new(&python)
-            .no_window()
+        crate::tokio_command(&python)
             .arg("-m")
             .arg(push_module)
             .env("HF_PUSH_CFG", &config_json)

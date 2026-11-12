@@ -5,7 +5,6 @@ use crate::synclog::SyncLog;
 
 use crate::expand_tilde;
 use crate::{default_shell, home_dir};
-use crate::{StdCommandNoWindow, TokioCommandNoWindow};
 
 /// Returns the correct Python path inside a venv (Scripts/python.exe on Windows,
 /// bin/python on Unix).
@@ -59,8 +58,7 @@ pub struct CondaStatus {
 pub fn find_conda() -> Option<String> {
     if let Ok(conda_exe) = std::env::var("CONDA_EXE")
         && !conda_exe.is_empty()
-        && let Ok(output) = std::process::Command::new(&conda_exe)
-            .no_window()
+        && let Ok(output) = crate::std_command(&conda_exe)
             .arg("--version")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -96,8 +94,7 @@ pub fn find_conda() -> Option<String> {
     let candidates = candidates;
 
     for path in &candidates {
-        if let Ok(output) = std::process::Command::new(path)
-            .no_window()
+        if let Ok(output) = crate::std_command(path)
             .arg("--version")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -111,16 +108,14 @@ pub fn find_conda() -> Option<String> {
     // Last resort: ask a login shell for CONDA_EXE (not applicable on Windows)
     if !cfg!(windows) {
         let shell = default_shell();
-        if let Ok(output) = std::process::Command::new(&shell)
-            .no_window()
+        if let Ok(output) = crate::std_command(&shell)
             .args(["-l", "-c", "echo $CONDA_EXE"])
             .output()
             && output.status.success()
         {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty()
-                && let Ok(check) = std::process::Command::new(&path)
-                    .no_window()
+                && let Ok(check) = crate::std_command(&path)
                     .arg("--version")
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -165,8 +160,7 @@ pub fn find_uv() -> Option<String> {
     };
 
     for path in candidates.iter().chain(extra.iter()) {
-        if let Ok(output) = std::process::Command::new(path)
-            .no_window()
+        if let Ok(output) = crate::std_command(path)
             .arg("--version")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -233,8 +227,7 @@ pub async fn ensure_uv(app: tauri::AppHandle) -> Result<UvStatus, String> {
         }
     };
 
-    let version = tokio::process::Command::new(&uv_bin)
-        .no_window()
+    let version = crate::tokio_command(&uv_bin)
         .arg("--version")
         .output()
         .await
@@ -271,8 +264,7 @@ else \
   echo "{\"installed\":true,\"version\":\"$VER\",\"message\":\"uv was installed\"}"; \
 fi"#;
 
-    let mut cmd = tokio::process::Command::new(&parts[0]);
-    cmd.no_window();
+    let mut cmd = crate::tokio_command(&parts[0]);
     cmd.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]);
     for arg in &parts[1..] {
         cmd.arg(arg);
@@ -311,8 +303,7 @@ pub async fn get_shell_env() -> HashMap<String, String> {
     }
 
     let shell = default_shell();
-    let output = tokio::process::Command::new(&shell)
-        .no_window()
+    let output = crate::tokio_command(&shell)
         .args(["-l", "-i", "-c", "env"])
         .stderr(std::process::Stdio::null())
         .output()
@@ -340,8 +331,7 @@ pub async fn resolve_conda_path() -> Option<String> {
 
     if !cfg!(windows) {
         let shell = default_shell();
-        if let Ok(output) = tokio::process::Command::new(&shell)
-            .no_window()
+        if let Ok(output) = crate::tokio_command(&shell)
             .args(["-l", "-i", "-c", "echo $CONDA_EXE"])
             .output()
             .await
@@ -370,8 +360,7 @@ pub async fn check_conda() -> Result<CondaStatus, String> {
         }
     };
 
-    let version = tokio::process::Command::new(&conda_bin)
-        .no_window()
+    let version = crate::tokio_command(&conda_bin)
         .arg("--version")
         .output()
         .await
@@ -420,8 +409,7 @@ else
   echo "{\"installed\":false,\"version\":null,\"message\":\"conda not found\"}"
 fi"#;
 
-    let mut cmd = tokio::process::Command::new(&parts[0]);
-    cmd.no_window();
+    let mut cmd = crate::tokio_command(&parts[0]);
     cmd.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]);
     for arg in &parts[1..] {
         cmd.arg(arg);
@@ -455,8 +443,7 @@ fi"#;
 async fn get_venv_versions(venv_path: &std::path::Path) -> (Option<String>, Option<String>) {
     let python = venv_python(venv_path);
 
-    let py_ver = tokio::process::Command::new(&python)
-        .no_window()
+    let py_ver = crate::tokio_command(&python)
         .args(["--version"])
         .output()
         .await
@@ -469,8 +456,7 @@ async fn get_venv_versions(venv_path: &std::path::Path) -> (Option<String>, Opti
                 .to_string()
         });
 
-    let at_ver = tokio::process::Command::new(&python)
-        .no_window()
+    let at_ver = crate::tokio_command(&python)
         // Read the installed version from package metadata. Importing autotimm
         // would load PyTorch and timm, which takes seconds per call.
         .args(["-c", "from importlib.metadata import version; print(version('autotimm'))"])
@@ -754,8 +740,7 @@ fi"#,
         path = remote_path.replace('"', "\\\"")
     );
 
-    let mut cmd = tokio::process::Command::new(&parts[0]);
-    cmd.no_window();
+    let mut cmd = crate::tokio_command(&parts[0]);
     cmd.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]);
     for arg in &parts[1..] {
         cmd.arg(arg);

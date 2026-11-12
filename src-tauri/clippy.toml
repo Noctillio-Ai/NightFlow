@@ -1,0 +1,6 @@
+# Spawning a process directly opens a console window on Windows.
+# Use crate::std_command / crate::tokio_command instead (src/main.rs).
+disallowed-methods = [
+    { path = "std::process::Command::new", reason = "use crate::std_command so no console window flashes on Windows" },
+    { path = "tokio::process::Command::new", reason = "use crate::tokio_command so no console window flashes on Windows" },
+]

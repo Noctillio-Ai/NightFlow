@@ -20,45 +20,38 @@ use tauri::menu::{AboutMetadata, MenuBuilder, SubmenuBuilder};
 
 // ── Hide console windows on Windows ─────────────────────────────────────────
 //
-// On Windows, spawning a subprocess via std::process::Command or
-// tokio::process::Command opens a visible console window by default.
-// These traits add a `.no_window()` builder method that sets the
-// CREATE_NO_WINDOW flag (0x08000000) on Windows and is a no-op elsewhere.
+// On Windows, spawning a subprocess opens a visible console window by default.
+// Every subprocess in this app MUST be created through `std_command` or
+// `tokio_command`, which set CREATE_NO_WINDOW (0x08000000) on Windows and are
+// plain `Command::new` elsewhere. Direct `Command::new` is rejected by clippy
+// (see clippy.toml), so a new call site can't silently bring the flash back.
+//
+// Note: `creation_flags` replaces (not ORs) the flags, so a caller that sets
+// its own flags must include CREATE_NO_WINDOW itself.
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt as _;
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-#[cfg(windows)]
-const _CREATE_NO_WINDOW: u32 = 0x08000000;
-
-pub trait StdCommandNoWindow {
-    fn no_window(&mut self) -> &mut Self;
-}
-
-impl StdCommandNoWindow for std::process::Command {
-    #[inline]
-    fn no_window(&mut self) -> &mut Self {
-        #[cfg(windows)]
-        {
-            self.creation_flags(_CREATE_NO_WINDOW);
-        }
-        self
+#[allow(clippy::disallowed_methods)]
+pub fn std_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    cmd
 }
 
-pub trait TokioCommandNoWindow {
-    fn no_window(&mut self) -> &mut Self;
-}
-
-impl TokioCommandNoWindow for tokio::process::Command {
-    #[inline]
-    fn no_window(&mut self) -> &mut Self {
-        #[cfg(windows)]
-        {
-            self.creation_flags(_CREATE_NO_WINDOW);
-        }
-        self
+#[allow(clippy::disallowed_methods)]
+pub fn tokio_command(program: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
+    #[allow(unused_mut)]
+    let mut cmd = tokio::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    cmd
 }
 
 // ── Shared utility ───────────────────────────────────────────────────────────
