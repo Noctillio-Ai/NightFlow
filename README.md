@@ -203,7 +203,7 @@ warning for the one installer it downloads. Windows support is in beta, so pleas
 Requires macOS Ventura or later.
 
 ```bash
-brew tap noctillio-ai/nightflow https://github.com/Noctillio-Ai/NightFlow
+brew tap noctillio-ai/nightflow
 brew trust noctillio-ai/nightflow
 brew install --cask nightflow
 ```
@@ -212,6 +212,10 @@ brew install --cask nightflow
   third-party tap until you trust it. On older Homebrew, skip that line.
 - The cask clears the macOS quarantine flag on NightFlow.app after every install and
   upgrade, so the app opens without a Gatekeeper warning.
+- Tapped before v0.7.2? The cask moved to
+  [Noctillio-Ai/homebrew-nightflow](https://github.com/Noctillio-Ai/homebrew-nightflow).
+  Point your tap at it once, and upgrades work again:
+  `brew tap --custom-remote noctillio-ai/nightflow https://github.com/Noctillio-Ai/homebrew-nightflow`
 
 ### Installing a specific version
 
