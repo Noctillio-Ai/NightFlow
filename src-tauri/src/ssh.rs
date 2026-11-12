@@ -1,7 +1,6 @@
 use tauri::command;
 
 use crate::{expand_tilde, home_dir};
-use crate::TokioCommandNoWindow;
 
 // ── SSH keys ─────────────────────────────────────────────────────────────────
 //
@@ -71,8 +70,7 @@ fn permission_warning(_path: &std::path::Path) -> Option<String> {
 
 /// `ssh-keygen -l -f <file>` → (bits, "SHA256:…", comment, "ED25519").
 async fn keygen_fingerprint(file: &std::path::Path) -> Option<(u32, String, String, String)> {
-    let mut cmd = tokio::process::Command::new("ssh-keygen");
-    cmd.no_window();
+    let mut cmd = crate::tokio_command("ssh-keygen");
     cmd.arg("-l").arg("-f").arg(file);
     cmd.stdin(std::process::Stdio::null());
     cmd.kill_on_drop(true);
@@ -335,8 +333,7 @@ async fn generate_key_in(
         }
         None => {
             args.extend(["-N".into(), String::new()]);
-            let mut cmd = tokio::process::Command::new("ssh-keygen");
-            cmd.no_window();
+            let mut cmd = crate::tokio_command("ssh-keygen");
             cmd.args(&args);
             cmd.stdin(std::process::Stdio::null());
             cmd.kill_on_drop(true);
@@ -365,8 +362,7 @@ pub async fn test_ssh(ssh_command: String) -> Result<String, String> {
     if parts.is_empty() {
         return Err("Empty SSH command".to_string());
     }
-    let mut cmd = tokio::process::Command::new(&parts[0]);
-    cmd.no_window();
+    let mut cmd = crate::tokio_command(&parts[0]);
     cmd.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"]);
     for arg in &parts[1..] {
         cmd.arg(arg);
@@ -398,8 +394,7 @@ pub async fn ssh_mkdir(ssh_command: String, path: String) -> Result<String, Stri
     if parts.is_empty() {
         return Err("Empty SSH command".to_string());
     }
-    let mut cmd = tokio::process::Command::new(&parts[0]);
-    cmd.no_window();
+    let mut cmd = crate::tokio_command(&parts[0]);
     cmd.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"]);
     for arg in &parts[1..] {
         cmd.arg(arg);
@@ -445,8 +440,7 @@ pub async fn ssh_check_path(ssh_command: String, path: String) -> Result<bool, S
     } else {
         path.clone()
     };
-    let mut cmd = tokio::process::Command::new(&parts[0]);
-    cmd.no_window();
+    let mut cmd = crate::tokio_command(&parts[0]);
     cmd.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"]);
     for arg in &parts[1..] {
         cmd.arg(arg);
@@ -474,8 +468,7 @@ pub async fn ssh_write_file(ssh_command: String, path: String, contents: String)
     } else {
         path.clone()
     };
-    let mut cmd = tokio::process::Command::new(&parts[0]);
-    cmd.no_window();
+    let mut cmd = crate::tokio_command(&parts[0]);
     cmd.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]);
     for arg in &parts[1..] {
         cmd.arg(arg);
@@ -510,11 +503,10 @@ pub async fn ssh_write_file(ssh_command: String, path: String, contents: String)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
 
     fn keygen(dir: &std::path::Path, name: &str, extra: &[&str]) -> std::path::PathBuf {
         let path = dir.join(name);
-        let ok = Command::new("ssh-keygen")
+        let ok = crate::std_command("ssh-keygen")
             .args(["-q", "-C", "test@nightflow", "-f"])
             .arg(&path)
             .args(extra)
@@ -630,7 +622,7 @@ mod tests {
         // cipher ("none" when unencrypted), and the right passphrase opens it.
         assert_eq!(openssh_cipher(&ssh_dir.join("nf_plain")), "none");
         assert_eq!(openssh_cipher(&ssh_dir.join("nf_locked")), "aes256-ctr");
-        let opens = Command::new("ssh-keygen")
+        let opens = crate::std_command("ssh-keygen")
             .args(["-y", "-P", "correct horse", "-f"])
             .arg(ssh_dir.join("nf_locked"))
             .stdin(std::process::Stdio::null())

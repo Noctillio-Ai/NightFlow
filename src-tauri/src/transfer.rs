@@ -238,14 +238,9 @@ fn ssh_parts(ssh_command: &str) -> Result<Vec<String>, String> {
 }
 
 fn ssh_cmd(parts: &[String]) -> std::process::Command {
-    let mut cmd = std::process::Command::new(&parts[0]);
+    let mut cmd = crate::std_command(&parts[0]);
     cmd.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]);
     cmd.args(&parts[1..]);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
     cmd
 }
 
